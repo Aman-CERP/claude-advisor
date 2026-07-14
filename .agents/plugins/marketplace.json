@@ -1,0 +1,20 @@
+{
+  "name": "aman-cerp",
+  "interface": {
+    "displayName": "Aman-CERP"
+  },
+  "plugins": [
+    {
+      "name": "claude-advisor",
+      "source": {
+        "source": "local",
+        "path": "./plugins/claude-advisor"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -37,7 +37,7 @@ Claude Advisor standardizes that boundary while preserving human judgment.
 2. Invoke the operator's local Claude Code CLI non-interactively and capture its result in durable files.
 3. Disable Claude-side customizations, tools, Chrome integration, and session persistence for independent, read-only analysis.
 4. Produce structured, schema-validated results and provenance receipts.
-5. Enforce deterministic input, time, turn, and spend ceilings.
+5. Enforce deterministic input/time ceilings and fail closed when Claude reports exceeding requested turn or spend ceilings.
 6. Fail visibly on missing prerequisites, authentication failures, timeouts, non-zero exits, incomplete results, or malformed output.
 7. Make the plugin installable from a public Codex marketplace repository and available across all local workspaces for that Codex user.
 8. Keep V1 dependency-free beyond Python 3.11+, Git, GitHub CLI for PR mode, and Claude Code.
@@ -45,6 +45,7 @@ Claude Advisor standardizes that boundary while preserving human judgment.
 ## 4. Non-goals
 
 - Hosting a Claude proxy, MCP service, or shared OAuth session.
+- Routing analysis through a custom Anthropic base URL or the Bedrock, Vertex, Foundry, or Mantle provider modes in V1.
 - Supporting ChatGPT web or Codex cloud environments that cannot execute the local CLI.
 - Automatically invoking Claude based on task classification.
 - Automatically posting GitHub reviews, comments, approvals, labels, commits, or status checks.
@@ -119,8 +120,10 @@ Research was refreshed on 2026-07-14 against official documentation and live loc
 - OpenAI documents plugins as the stable packaging mechanism for sharing skills across teams; a plugin requires `.codex-plugin/plugin.json` and can be distributed through a marketplace repository.
 - OpenAI documents skills as instruction bundles with `SKILL.md`; plugin-owned skills can opt out of implicit invocation.
 - Anthropic documents `claude -p` for non-interactive execution, `--output-format json`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
-- The locally tested Claude CLI is `2.1.209`. Its help confirms every mandatory V1 flag: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-turns`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
+- The locally tested Claude CLI is `2.1.209`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
+- Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated analysis probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. Doctor verifies parser recognition without an inference call by running `claude --max-turns 1 --version` with empty stdin and the same named 20-second timeout as other dependency probes, requiring exit zero and the same parsed version as the primary version probe. This avoids depending on undocumented error wording or a deliberately invalid budget.
 - The exact authentication probe `claude auth status --json` was live-verified on 2.1.209. Exit 0 plus JSON boolean `loggedIn: true` is success. The command also returns identity and organization fields; the plugin must neither print nor persist those fields.
+- Anthropic documents that non-interactive Claude uses `ANTHROPIC_AUTH_TOKEN`, then `ANTHROPIC_API_KEY`, then `CLAUDE_CODE_OAUTH_TOKEN`, before stored subscription OAuth credentials. V1 passes only those documented first-party credential variables; it drops endpoint, provider-mode, model, tool, plugin, hook, and other Claude configuration environment variables.
 - GitHub CLI `2.92.0` was live-verified. `gh pr view --json baseRefOid,headRefOid,...` returned both object IDs against a live GitHub PR.
 - Anthropic documents that Pro and Max subscriptions can authenticate Claude Code and that Claude/Claude Code usage shares plan limits. API Console billing is separate. The plugin must not claim that a run is free or that a spend cap guarantees subscription availability.
 
@@ -132,6 +135,8 @@ Primary sources:
 - [Anthropic: Claude Code CLI reference](https://docs.anthropic.com/en/docs/claude-code/cli-reference)
 - [Anthropic: Run Claude Code programmatically](https://code.claude.com/docs/en/headless)
 - [Anthropic: Set up Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started)
+- [Anthropic: Claude Code environment variables](https://code.claude.com/docs/en/env-vars)
+- [Anthropic: Claude Code authentication](https://code.claude.com/docs/en/iam)
 - [Anthropic: Using Claude Code with Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
 
 ## 8. Functional requirements
@@ -149,7 +154,9 @@ The runner provides `doctor` and verifies:
 - Claude version is parseable and meets the minimum tested version;
 - Claude authentication status succeeds;
 - GitHub CLI resolution and authentication when requested;
-- all mandatory flags are present in `claude --help`: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-turns`, `--max-budget-usd`, `--model`, and `--effort`.
+- all advertised mandatory flags are present in `claude --help`: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`;
+- the installed version is at least the version on which the hidden-but-accepted `--max-turns` behavior was live-tested;
+- a no-inference version probe confirms that the installed CLI still recognizes `--max-turns`.
 
 Doctor fails closed when a mandatory flag is missing. It warns, but does not fail, when Claude is newer than the highest behavior-tested version, because flag presence does not prove unchanged semantics. Authentication output is reduced to non-identifying status fields before display or persistence.
 
@@ -162,7 +169,7 @@ The runner provides `advisory` with:
 - exactly one question source: `--question` or `--question-file`;
 - zero or more `--context-file` arguments;
 - explicit `--output-dir` or a safe default under `.codex/claude-advisor/`;
-- configurable model, effort, maximum turns, maximum budget, timeout, and total input bytes within hard ceilings;
+- configurable model, effort, requested maximum turns/budget, parent-enforced timeout, and total input bytes within validated bounds;
 - schema-validated Claude output.
 
 ### FR-4: PR-review command
@@ -177,11 +184,13 @@ GitHub mode uses argument-safe, read-only commands:
 - `gh pr view` for repository, number, title, URL, author, base branch, head branch, base object ID, head object ID, additions, deletions, and changed-file count;
 - `gh pr diff` for unified diff content.
 
-The runner reads `headRefOid` before and after `gh pr diff` and aborts with exit 8 if it changed. The exact diff is hashed with SHA-256 and recorded. The receipt labels the content as the unified diff returned by GitHub's PR-diff endpoint; it does not claim that the content equals a local two-dot object range.
+GitHub stdout and stderr are read incrementally with byte ceilings; an oversized diff is terminated and rejected before assembly. The same bounded subprocess primitive caps Claude stdout and stderr before parsing. On timeout, overflow, or pipe failure, the runner kills the isolated POSIX process group so descendants cannot outlive the failed run. Startup and mid-stream I/O failures have distinct operator diagnostics. The runner reads `baseRefOid` and `headRefOid` before and after `gh pr diff` and aborts with exit 8 if either changed. The exact diff is hashed with SHA-256 and recorded. The receipt labels the content as the unified diff returned by GitHub's PR-diff endpoint; it does not claim that the content equals a local two-dot object range.
+
+V1 ceilings are 6 MiB for a PR diff or individual context file, 8 MiB aggregate raw advisory input plus a final 8 MiB assembled-input check, 1 MiB for GitHub metadata or dependency-probe stdout, 16 MiB for Claude stdout, and 1 MiB for child-process stderr. Advisory file reads consume a running aggregate budget and reject before materializing the file that would cross it. The runner terminates the child and returns the corresponding fail-closed outcome as soon as a stream crosses its ceiling.
 
 ### FR-5: Structured outcomes
 
-Claude's structured-output envelope remains untrusted. The runner validates the extracted result locally and fail-closed. Its validator implements every keyword used by the bundled schemas: `type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, and `maxItems`. A bundled schema using any unsupported keyword is a build error.
+Claude's structured-output envelope remains untrusted. The runner validates the extracted result locally and fail-closed. Its validator implements every keyword used by the bundled schemas: `type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`. A bundled schema using any unsupported keyword is a build error.
 
 Advisory output includes:
 
@@ -223,7 +232,7 @@ The runner writes one compact JSON object to stdout. Human diagnostics go to std
 - `2`: invalid usage or rejected input;
 - `3`: missing or incompatible dependency;
 - `4`: authentication unavailable;
-- `5`: Claude execution failed or returned an incomplete result;
+- `5`: Claude execution failed, returned an incomplete result, or reported a requested turn/cost ceiling breach;
 - `6`: timeout;
 - `7`: malformed or schema-invalid result;
 - `8`: GitHub read failed;
@@ -257,7 +266,8 @@ Untrusted data plane:
 - Build subprocess argument arrays and use `shell=False`.
 - Never accept arbitrary extra Claude or `gh` arguments.
 - Resolve executables from explicit overrides or `PATH`; record the path.
-- Remove customization controls `CLAUDE_CODE_SAFE_MODE`, `CLAUDE_CODE_SIMPLE`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CONFIG_DIR`, and `MCP_TIMEOUT` from the child environment so the runner's explicit mode wins. Preserve ordinary process essentials and provider authentication variables, including `ANTHROPIC_API_KEY`, `AWS_*`, `GOOGLE_*`, and Azure provider variables. Never log their values. Tests assert the denylist is absent and representative authentication variables survive.
+- Construct child environments from explicit per-child allowlists. Both process types receive only ordinary process essentials, locale/temp paths, certificate settings, and standard HTTP proxy settings. Claude alone receives the documented first-party credentials `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`; GitHub alone receives its CLI authentication/configuration variables. Force GitHub prompts off. Drop all other variables, including `ANTHROPIC_BASE_URL`, cloud-provider toggles and credentials, Claude configuration/model/tool/plugin controls, and future unknown Claude variables. Never log credential values. Tests prove representative credentials survive only in their intended child while known and unknown customization variables do not.
+- Start every supported child in a new POSIX session. On timeout, byte-limit breach, or process I/O failure, signal the full process group and wait for the direct child. Distinguish process-start failure from mid-stream I/O failure in diagnostics and receipts.
 
 ### 9.3 Claude isolation
 
@@ -301,16 +311,16 @@ The default check is intentionally conservative but not a DLP guarantee. `--allo
 
 The README and skill instructions must tell operators that selected prompts, diffs, and context are sent to Anthropic under the authentication and data controls of their Claude account. Teammates on separate machines must authenticate themselves. The project stores no credentials and provides no shared service.
 
-## 10. Reliability and resource ceilings
+## 10. Reliability and resource bounds
 
-Hard V1 ceilings:
+V1 bounds:
 
 - total assembled input: 8 MiB;
 - any single input file: 6 MiB;
 - context files: 32;
-- timeout: 60–1,800 seconds;
-- turns: 1–12;
-- budget: USD 0.10–20.00 when the Claude account supports budget accounting;
+- runner timeout: 60–1,800 seconds, enforced by the parent process;
+- requested Claude turns: 1–12, with any reported overage classified as a failed ceiling breach;
+- requested Claude budget: USD 0.10–20.00, with any reported overage classified as a failed ceiling breach;
 - model allowlist: `sonnet`, `opus`, or a full model identifier matching a conservative character pattern;
 - effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 
@@ -320,9 +330,9 @@ Defaults:
 - PR review: `sonnet`, high effort, 8 turns, USD 5.00, 1,200 seconds;
 - PR review with `--critical`: `opus`, high effort, 10 turns, USD 10.00, 1,500 seconds.
 
-A budget flag is a Claude-side ceiling, not a promise of availability or an exact subscription charge.
+A turn or budget flag is a Claude-side requested ceiling, not a promise of availability, exact subscription charge, or perfect pre-spend enforcement. A live 2.1.209 structured-output run reported three turns after `--max-turns 2`; the plugin therefore checks reported turns/cost and rejects a breached run instead of publishing its result as success. A successful run also requires non-negative, correctly typed `num_turns` and `total_cost_usd` fields from the behavior-tested envelope. Missing, mistyped, non-finite, or negative usage is recorded as unverified and rejected before result publication.
 
-The `--max-budget-usd` flag is a required compatibility feature in V1 and is always passed. Receipts distinguish `budget_requested_usd` from `reported_cost_usd`; absence of a reported cost is recorded as `budget_enforcement_observed: false`, without claiming the CLI ignored the requested ceiling.
+The `--max-budget-usd` flag is a required compatibility feature in V1 and is always passed. Receipts distinguish `budget_requested_usd` from `reported_cost_usd` and record both turn- and budget-enforcement observation booleans. Missing or invalid usage sets the corresponding observation false and produces `usage_unverified` rather than a successful result.
 
 ## 11. Prompt requirements
 
@@ -391,7 +401,7 @@ Tests use hostile question, file, repository, and PR strings and prove they rema
 
 ### AC-5: Doctor outcomes
 
-Tests cover success, missing Claude, incompatible Claude, each mandatory flag missing in turn, newer-than-tested warning, unauthenticated Claude, sanitized auth status, and optional/missing GitHub CLI.
+Tests cover success, missing Claude, incompatible Claude, each advertised mandatory flag missing in turn, hidden `--max-turns` parser recognition, newer-than-tested warning, unauthenticated Claude, sanitized auth status, and optional/missing GitHub CLI.
 
 ### AC-6: Advisory outcomes
 
@@ -399,7 +409,7 @@ Tests cover valid structured output, non-zero Claude exit, timeout, malformed en
 
 ### AC-7: PR snapshot integrity
 
-Tests prove PR mode records owner/repository, PR number, base/head object IDs, and the SHA-256 of the exact reviewed diff. A separate test changes `headRefOid` between the pre- and post-diff reads and requires an exit-8 abort without a review result.
+Tests prove PR mode records owner/repository, PR number, base/head object IDs, and the SHA-256 of the exact reviewed diff. Separate tests bound GitHub diff output and change `baseRefOid` and `headRefOid` between the pre- and post-diff reads, requiring an exit-8 abort without a review result.
 
 ### AC-8: Sensitive-input fail-closed behavior
 
@@ -411,7 +421,7 @@ Tests prove success and failure receipts are written atomically, output files ha
 
 ### AC-10: Bounded inputs
 
-Tests cover file count, single-file size, total input size, timeout, turns, budget, model, and effort validation.
+Tests cover file count, single-file size, total input size, timeout, turns, budget, model, effort validation, and reported turn/cost ceiling breaches.
 
 ### AC-11: Deterministic package
 

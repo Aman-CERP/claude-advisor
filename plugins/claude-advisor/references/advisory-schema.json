@@ -1,0 +1,132 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["completed", "unable_to_advise"]
+    },
+    "executive_summary": {
+      "type": "string"
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12
+          }
+        },
+        "required": ["claim", "evidence"],
+        "additionalProperties": false
+      },
+      "maxItems": 20
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20
+    },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "benefits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12
+          },
+          "drawbacks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12
+          }
+        },
+        "required": ["name", "benefits", "drawbacks", "risks"],
+        "additionalProperties": false
+      },
+      "maxItems": 8
+    },
+    "material_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20
+    },
+    "recommendation": {
+      "type": "object",
+      "properties": {
+        "choice": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "conditions_that_change_it": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12
+        }
+      },
+      "required": ["choice", "rationale", "confidence", "conditions_that_change_it"],
+      "additionalProperties": false
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20
+    },
+    "validation_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20
+    }
+  },
+  "required": [
+    "status",
+    "executive_summary",
+    "facts",
+    "assumptions",
+    "options",
+    "material_risks",
+    "recommendation",
+    "open_questions",
+    "validation_steps"
+  ],
+  "additionalProperties": false
+}

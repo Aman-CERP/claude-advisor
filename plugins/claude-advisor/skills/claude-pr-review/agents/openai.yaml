@@ -1,0 +1,7 @@
+interface:
+  display_name: "Claude PR Review"
+  short_description: "Adversarial Claude review of a PR or diff"
+  default_prompt: "Use $claude-pr-review to ask Claude for an adversarial review of this pull request."
+
+policy:
+  allow_implicit_invocation: false

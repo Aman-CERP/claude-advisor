@@ -6,7 +6,7 @@ Depends on: `docs/specification.md`
 
 ## 1. Delivery strategy
 
-Implement one small, standard-library Python runner and two thin Codex skills. The runner owns validation, isolation, process execution, artifact creation, and deterministic rendering. Skills own user-facing workflow guidance and call the runner rather than duplicating command logic.
+Implement one cohesive, standard-library Python runner and two thin Codex skills. The runner owns validation, isolation, process execution, artifact creation, and deterministic rendering. Skills own user-facing workflow guidance and call the runner rather than duplicating command logic.
 
 The release proceeds through specification, plan review, tests-first implementation, adversarial diff review, verification, packaging, publication, and global local installation.
 
@@ -96,15 +96,15 @@ Write failing tests against the specification before production runner code.
 
 ### 5.2 Required first-wave failures
 
-- doctor success and dependency/auth failures;
+- doctor success, bounded dependency output, dependency/auth failures, and hidden `--max-turns` parser recognition through a no-inference version probe;
 - argument/ceiling validation;
 - exact isolation flags;
 - successful advisory parsing and artifact creation;
 - timeout/non-zero/malformed/incomplete Claude results, extra properties, and invalid enum values;
-- PR metadata/diff hashing and post-diff head-object race rejection;
+- bounded PR metadata/diff capture, hashing, and post-diff base/head race rejection;
 - secret-path and secret-pattern rejection/override, including secrets in questions and benign assignments;
 - deterministic report and package output;
-- child-environment denylist and authentication-variable preservation;
+- child-environment allowlist, first-party authentication-variable preservation, and unknown/customization-variable removal;
 - permission, `O_NOFOLLOW`, and symlink protections;
 - prompt structure proving every untrusted source is inside the evidence delimiters.
 
@@ -121,12 +121,12 @@ Implement in this dependency order:
 3. safe executable resolution and version parsing;
 4. atomic owner-only file writer;
 5. run-directory allocation and receipt lifecycle;
-6. bounded, symlink-safe input reader;
+6. bounded, symlink-safe input reader with an incrementally consumed aggregate advisory budget;
 7. sensitive-input scanner and redactor;
-8. subprocess executor with argument arrays, controlled environment, timeout, and captured streams;
+8. bounded subprocess executor with argument arrays, per-child credential environments, empty/provided stdin, incremental stdout/stderr ceilings, a named probe timeout, POSIX process-group termination, and distinct startup/runtime I/O classification;
 9. doctor checks;
-10. Claude envelope and structured-output extraction;
-11. deterministic schema validation and Markdown rendering; the validator implements every keyword used by bundled schemas (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, and `maxItems`) and treats unsupported bundled keywords as build errors;
+10. Claude envelope, mandatory typed usage evidence, and structured-output extraction;
+11. deterministic schema validation and Markdown rendering; the validator implements every keyword used by bundled schemas (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`) and treats unsupported bundled keywords as build errors;
 12. advisory orchestration;
 13. GitHub/supplied-diff review orchestration.
 
