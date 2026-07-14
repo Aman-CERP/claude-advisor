@@ -189,6 +189,10 @@ if mode == "turn-breach":
     envelope["num_turns"] = 99
 if mode == "cost-breach":
     envelope["total_cost_usd"] = 99.0
+if mode == "missing-turn-usage":
+    envelope.pop("num_turns")
+if mode == "string-cost-usage":
+    envelope["total_cost_usd"] = "0.01"
 print(json.dumps(envelope))
 """
 )

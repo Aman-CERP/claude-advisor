@@ -212,6 +212,29 @@ class AdvisoryTests(unittest.TestCase):
                 self.assertEqual(receipt["outcome"], "ceiling_breach")
                 self.assertFalse((run_dir / "result.json").exists())
 
+    def test_advisory_rejects_missing_or_mistyped_usage_evidence(self) -> None:
+        for mode in ("missing-turn-usage", "string-cost-usage"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                env, _, _ = fake_environment(root)
+                env["FAKE_CLAUDE_MODE"] = mode
+                completed = run_cli(
+                    [
+                        "advisory",
+                        "--question",
+                        "Choose A or B",
+                        "--output-dir",
+                        str(root / "runs"),
+                    ],
+                    cwd=root,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, 5, completed.stderr)
+                run_dir = Path(stdout_json(completed)["run_dir"])
+                receipt = json.loads((run_dir / "receipt.json").read_text())
+                self.assertEqual(receipt["outcome"], "usage_unverified")
+                self.assertFalse((run_dir / "result.json").exists())
+
     def test_advisory_child_failure_has_redacted_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -311,6 +334,30 @@ class AdvisoryTests(unittest.TestCase):
 
 
 class SecurityTests(unittest.TestCase):
+    def test_context_reads_enforce_aggregate_input_limit_incrementally(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            first = root / "first.txt"
+            second = root / "second.txt"
+            first.write_bytes(b"a" * (5 * 1024 * 1024))
+            second.write_bytes(b"b" * (4 * 1024 * 1024))
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "q",
+                    "--context-file",
+                    str(first),
+                    "--context-file",
+                    str(second),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 2, completed.stderr)
+            self.assertIn("aggregate byte limit", completed.stderr)
+
     def test_invalid_resource_bounds_and_context_count_fail_before_analysis(
         self,
     ) -> None:

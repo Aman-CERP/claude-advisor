@@ -117,6 +117,27 @@ Disposition: **accepted and fixed**.
 
 Evidence: the bounded-process primitive now reports `io_error` once process creation succeeded. Doctor, Claude analysis, and GitHub reads map that reason to explicit I/O diagnostics instead of a false startup failure. A regression injects an `os.read` failure after child output becomes readable and verifies the `io_error` classification.
 
+## Fifth full-PR review
+
+- Reviewed head: `cb05ea1e0c725b5b21b3960b6cd840f3abbe567c`
+- Diff SHA-256: `4f5c6038cf533b6aba7e37a576ada0534b3899328c37f4baa346387c59698ce6`
+- Verdict: `comment`, medium confidence
+- Claude usage: two turns, USD 1.2350395 reported
+
+Claude found no critical, high, or medium defect. It reported two low reliability observations.
+
+### Fifth CA-R1 — Aggregate advisory input was checked after materialization
+
+Disposition: **accepted and fixed**.
+
+Evidence: context reads now consume the 8 MiB raw-input budget beginning with the question bytes. The safe file reader receives the remaining aggregate allowance and rejects from descriptor metadata or incremental reads before materializing the file that would cross it. The final assembled 8 MiB check remains defense-in-depth for JSON/path overhead. A regression supplies 5 MiB and 4 MiB context files and requires aggregate rejection before preflight.
+
+### Fifth CA-R2 — Missing/mistyped usage evidence was fail-open
+
+Disposition: **accepted and fixed**.
+
+Evidence: success now requires non-negative, correctly typed, finite `num_turns` and `total_cost_usd` fields. Receipts record separate turn/budget observation booleans. Missing, boolean, string, negative, or non-finite usage produces exit 5 with `usage_unverified`, retains the raw envelope/receipt, and never publishes `result.json`. Regression cases cover missing turns and string cost.
+
 ## Agreement status
 
-Pending a final installed-plugin review after the fourth-review hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.
+Pending a final installed-plugin delta review after the fifth-review hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.

@@ -186,7 +186,7 @@ GitHub mode uses argument-safe, read-only commands:
 
 GitHub stdout and stderr are read incrementally with byte ceilings; an oversized diff is terminated and rejected before assembly. The same bounded subprocess primitive caps Claude stdout and stderr before parsing. On timeout, overflow, or pipe failure, the runner kills the isolated POSIX process group so descendants cannot outlive the failed run. Startup and mid-stream I/O failures have distinct operator diagnostics. The runner reads `baseRefOid` and `headRefOid` before and after `gh pr diff` and aborts with exit 8 if either changed. The exact diff is hashed with SHA-256 and recorded. The receipt labels the content as the unified diff returned by GitHub's PR-diff endpoint; it does not claim that the content equals a local two-dot object range.
 
-V1 ceilings are 6 MiB for a PR diff or individual context file, 8 MiB for the assembled advisory input, 1 MiB for GitHub metadata or dependency-probe stdout, 16 MiB for Claude stdout, and 1 MiB for child-process stderr. The runner terminates the child and returns the corresponding fail-closed outcome as soon as a stream crosses its ceiling.
+V1 ceilings are 6 MiB for a PR diff or individual context file, 8 MiB aggregate raw advisory input plus a final 8 MiB assembled-input check, 1 MiB for GitHub metadata or dependency-probe stdout, 16 MiB for Claude stdout, and 1 MiB for child-process stderr. Advisory file reads consume a running aggregate budget and reject before materializing the file that would cross it. The runner terminates the child and returns the corresponding fail-closed outcome as soon as a stream crosses its ceiling.
 
 ### FR-5: Structured outcomes
 
@@ -330,9 +330,9 @@ Defaults:
 - PR review: `sonnet`, high effort, 8 turns, USD 5.00, 1,200 seconds;
 - PR review with `--critical`: `opus`, high effort, 10 turns, USD 10.00, 1,500 seconds.
 
-A turn or budget flag is a Claude-side requested ceiling, not a promise of availability, exact subscription charge, or perfect pre-spend enforcement. A live 2.1.209 structured-output run reported three turns after `--max-turns 2`; the plugin therefore checks reported turns/cost and rejects a breached run instead of publishing its result as success.
+A turn or budget flag is a Claude-side requested ceiling, not a promise of availability, exact subscription charge, or perfect pre-spend enforcement. A live 2.1.209 structured-output run reported three turns after `--max-turns 2`; the plugin therefore checks reported turns/cost and rejects a breached run instead of publishing its result as success. A successful run also requires non-negative, correctly typed `num_turns` and `total_cost_usd` fields from the behavior-tested envelope. Missing, mistyped, non-finite, or negative usage is recorded as unverified and rejected before result publication.
 
-The `--max-budget-usd` flag is a required compatibility feature in V1 and is always passed. Receipts distinguish `budget_requested_usd` from `reported_cost_usd`; absence of a reported cost is recorded as `budget_enforcement_observed: false`, without claiming the CLI ignored the requested ceiling.
+The `--max-budget-usd` flag is a required compatibility feature in V1 and is always passed. Receipts distinguish `budget_requested_usd` from `reported_cost_usd` and record both turn- and budget-enforcement observation booleans. Missing or invalid usage sets the corresponding observation false and produces `usage_unverified` rather than a successful result.
 
 ## 11. Prompt requirements
 

@@ -121,11 +121,11 @@ Implement in this dependency order:
 3. safe executable resolution and version parsing;
 4. atomic owner-only file writer;
 5. run-directory allocation and receipt lifecycle;
-6. bounded, symlink-safe input reader;
+6. bounded, symlink-safe input reader with an incrementally consumed aggregate advisory budget;
 7. sensitive-input scanner and redactor;
 8. bounded subprocess executor with argument arrays, per-child credential environments, empty/provided stdin, incremental stdout/stderr ceilings, a named probe timeout, POSIX process-group termination, and distinct startup/runtime I/O classification;
 9. doctor checks;
-10. Claude envelope and structured-output extraction;
+10. Claude envelope, mandatory typed usage evidence, and structured-output extraction;
 11. deterministic schema validation and Markdown rendering; the validator implements every keyword used by bundled schemas (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`) and treats unsupported bundled keywords as build errors;
 12. advisory orchestration;
 13. GitHub/supplied-diff review orchestration.

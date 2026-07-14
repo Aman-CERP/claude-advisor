@@ -7,6 +7,7 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import selectors
@@ -663,7 +664,9 @@ def atomic_write_json(path: Path, value: Any) -> None:
     )
 
 
-def read_bounded_file(raw_path: str, *, label: str) -> tuple[str, dict[str, Any]]:
+def read_bounded_file(
+    raw_path: str, *, label: str, max_bytes: int = MAX_SINGLE_FILE_BYTES
+) -> tuple[str, dict[str, Any]]:
     path = Path(raw_path).expanduser()
     if not hasattr(os, "O_NOFOLLOW"):
         raise AdvisorError(
@@ -672,6 +675,12 @@ def read_bounded_file(raw_path: str, *, label: str) -> tuple[str, dict[str, Any]
             outcome="rejected",
         )
     flags = os.O_RDONLY | os.O_NOFOLLOW
+    effective_limit = min(MAX_SINGLE_FILE_BYTES, max_bytes)
+    limit_message = (
+        f"{label} exceeds the single-file byte limit"
+        if max_bytes >= MAX_SINGLE_FILE_BYTES
+        else "advisory input exceeds the aggregate byte limit"
+    )
     fd: int | None = None
     try:
         fd = os.open(path, flags)
@@ -680,24 +689,24 @@ def read_bounded_file(raw_path: str, *, label: str) -> tuple[str, dict[str, Any]
             raise AdvisorError(
                 EXIT_USAGE, f"{label} must be a regular file", outcome="rejected"
             )
-        if info.st_size > MAX_SINGLE_FILE_BYTES:
+        if info.st_size > effective_limit:
             raise AdvisorError(
                 EXIT_USAGE,
-                f"{label} exceeds the single-file byte limit",
+                limit_message,
                 outcome="rejected",
             )
         chunks: list[bytes] = []
         total = 0
         while True:
-            chunk = os.read(fd, min(65536, MAX_SINGLE_FILE_BYTES + 1 - total))
+            chunk = os.read(fd, min(65536, effective_limit + 1 - total))
             if not chunk:
                 break
             chunks.append(chunk)
             total += len(chunk)
-            if total > MAX_SINGLE_FILE_BYTES:
+            if total > effective_limit:
                 raise AdvisorError(
                     EXIT_USAGE,
-                    f"{label} exceeds the single-file byte limit",
+                    limit_message,
                     outcome="rejected",
                 )
         raw = b"".join(chunks)
@@ -1281,6 +1290,17 @@ def execute_claude(
         atomic_write_json(response_path, envelope)
         reported_turns = envelope.get("num_turns")
         reported_cost = envelope.get("total_cost_usd")
+        turns_observed = (
+            isinstance(reported_turns, int)
+            and not isinstance(reported_turns, bool)
+            and reported_turns >= 0
+        )
+        cost_observed = (
+            isinstance(reported_cost, (int, float))
+            and not isinstance(reported_cost, bool)
+            and math.isfinite(reported_cost)
+            and reported_cost >= 0
+        )
         receipt["claude"].update(
             {
                 "session_id": envelope.get("session_id"),
@@ -1288,23 +1308,27 @@ def execute_claude(
                 "duration_api_ms": envelope.get("duration_api_ms"),
                 "num_turns": reported_turns,
                 "reported_cost_usd": reported_cost,
-                "budget_enforcement_observed": reported_cost is not None,
+                "turn_enforcement_observed": turns_observed,
+                "budget_enforcement_observed": cost_observed,
                 "resolved_models": sorted(envelope.get("modelUsage", {}).keys())
                 if isinstance(envelope.get("modelUsage"), dict)
                 else [],
             }
         )
         receipt["artifacts"]["claude_response"] = str(response_path)
-        if isinstance(reported_turns, int) and reported_turns > limits["max_turns"]:
+        if not turns_observed or not cost_observed:
+            raise AdvisorError(
+                EXIT_CLAUDE,
+                "Claude did not report valid turn and cost usage",
+                outcome="usage_unverified",
+            )
+        if reported_turns > limits["max_turns"]:
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude exceeded the requested turn ceiling",
                 outcome="ceiling_breach",
             )
-        if (
-            isinstance(reported_cost, (int, float))
-            and reported_cost > limits["max_budget_usd"]
-        ):
+        if reported_cost > limits["max_budget_usd"]:
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude exceeded the requested cost ceiling",
@@ -1367,6 +1391,8 @@ def execute_claude(
 
 def read_context_files(
     paths: list[str],
+    *,
+    initial_bytes: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     if len(paths) > MAX_CONTEXT_FILES:
         raise AdvisorError(
@@ -1377,8 +1403,14 @@ def read_context_files(
     payload_items: list[dict[str, Any]] = []
     metadata: list[dict[str, Any]] = []
     source_paths: list[str] = []
+    total_bytes = initial_bytes
     for index, raw_path in enumerate(paths, start=1):
-        text, info = read_bounded_file(raw_path, label=f"context-{index}")
+        text, info = read_bounded_file(
+            raw_path,
+            label=f"context-{index}",
+            max_bytes=max(0, MAX_INPUT_BYTES - total_bytes),
+        )
+        total_bytes += info["bytes"]
         payload_items.append(
             {"id": f"context-{index}", "path": info["path"], "content": text}
         )
@@ -1418,7 +1450,8 @@ def run_advisory(args: argparse.Namespace) -> dict[str, Any]:
         }
 
     context_payload, context_metadata, source_paths = read_context_files(
-        args.context_file
+        args.context_file,
+        initial_bytes=question_info["bytes"],
     )
     if question_path:
         source_paths.append(question_path)
@@ -1577,7 +1610,8 @@ def run_pr_review(args: argparse.Namespace) -> dict[str, Any]:
         args, defaults=critical_defaults if args.critical else normal_defaults
     )
     context_payload, context_metadata, source_paths = read_context_files(
-        args.context_file
+        args.context_file,
+        initial_bytes=0,
     )
 
     if args.pr is not None:
