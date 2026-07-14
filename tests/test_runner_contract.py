@@ -69,6 +69,15 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 3)
             self.assertIn("--max-turns", completed.stderr)
 
+    def test_doctor_bounds_dependency_probe_output(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_PROBE_STDOUT_BYTES"] = str(1024 * 1024 + 1)
+            completed = run_cli(["doctor"], cwd=root, env=env)
+            self.assertEqual(completed.returncode, 3)
+            self.assertIn("byte limit", completed.stderr)
+
 
 class AdvisoryTests(unittest.TestCase):
     def test_advisory_is_isolated_and_writes_owner_only_artifacts(self) -> None:
@@ -118,6 +127,8 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(
                 analysis["env"]["ANTHROPIC_API_KEY"], "preserve-this-auth-value"
             )
+            self.assertIsNone(analysis["env"]["ANTHROPIC_BASE_URL"])
+            self.assertIsNone(analysis["env"]["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"])
             self.assertIsNone(analysis["env"]["CLAUDE_CONFIG_DIR"])
             self.assertIsNone(analysis["env"]["CLAUDE_CODE_USE_BEDROCK"])
 

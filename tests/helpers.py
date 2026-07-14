@@ -87,47 +87,55 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 args = sys.argv[1:]
-log = os.environ.get("FAKE_CLAUDE_LOG")
+control = json.loads(
+    (Path(sys.argv[0]).resolve().parent / ".claude-advisor-test-control.json").read_text(
+        encoding="utf-8"
+    )
+)
+log = control.get("FAKE_CLAUDE_LOG")
 if log:
     with open(log, "a", encoding="utf-8") as handle:
         handle.write(json.dumps({
             "args": args,
             "env": {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+                "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL"),
+                "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": os.environ.get(
+                    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
+                ),
                 "CLAUDE_CONFIG_DIR": os.environ.get("CLAUDE_CONFIG_DIR"),
                 "CLAUDE_CODE_USE_BEDROCK": os.environ.get("CLAUDE_CODE_USE_BEDROCK"),
             },
         }) + "\n")
 
 if args == ["--version"]:
-    print(os.environ.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    forced_stdout = int(control.get("FAKE_CLAUDE_PROBE_STDOUT_BYTES", "0"))
+    if forced_stdout:
+        sys.stdout.write("x" * forced_stdout)
+        raise SystemExit(0)
+    print(control.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
     raise SystemExit(0)
 
 if args == ["--help"]:
-    missing = os.environ.get("FAKE_CLAUDE_MISSING_FLAG", "")
+    missing = control.get("FAKE_CLAUDE_MISSING_FLAG", "")
     flags = """
     + repr(" ".join(REQUIRED_HELP_FLAGS))
     + r""".split()
     print("\n".join(flag for flag in flags if flag != missing))
     raise SystemExit(0)
 
-if args == [
-    "--max-turns",
-    "1",
-    "--max-budget-usd",
-    "0.000001",
-    "--claude-advisor-unknown-probe",
-]:
-    if os.environ.get("FAKE_CLAUDE_MAX_TURNS", "present") == "present":
-        print("error: unknown option '--claude-advisor-unknown-probe'", file=sys.stderr)
-    else:
+if args == ["--max-turns", "1", "--version"]:
+    if control.get("FAKE_CLAUDE_MAX_TURNS", "present") != "present":
         print("error: unknown option '--max-turns'", file=sys.stderr)
-    raise SystemExit(1)
+        raise SystemExit(1)
+    print(control.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    raise SystemExit(0)
 
 if args == ["auth", "status", "--json"]:
-    if os.environ.get("FAKE_CLAUDE_AUTH", "ok") != "ok":
+    if control.get("FAKE_CLAUDE_AUTH", "ok") != "ok":
         print(json.dumps({"loggedIn": False, "email": "private@example.invalid"}))
         raise SystemExit(1)
     print(json.dumps({
@@ -140,9 +148,9 @@ if args == ["auth", "status", "--json"]:
     }))
     raise SystemExit(0)
 
-mode = os.environ.get("FAKE_CLAUDE_MODE", "success")
+mode = control.get("FAKE_CLAUDE_MODE", "success")
 _ = sys.stdin.read()
-forced_stdout = int(os.environ.get("FAKE_CLAUDE_STDOUT_BYTES", "0"))
+forced_stdout = int(control.get("FAKE_CLAUDE_STDOUT_BYTES", "0"))
 if forced_stdout:
     sys.stdout.write("x" * forced_stdout)
     raise SystemExit(0)
@@ -155,7 +163,7 @@ if mode == "malformed":
     print("not-json")
     raise SystemExit(0)
 
-result = json.loads(os.environ["FAKE_CLAUDE_RESULT"])
+result = json.loads(control["FAKE_CLAUDE_RESULT"])
 if mode == "invalid-enum":
     result["status"] = "invented"
 if mode == "extra-property":
@@ -189,9 +197,15 @@ FAKE_GH = r"""#!/usr/bin/env python3
 import json
 import os
 import sys
+from pathlib import Path
 
 args = sys.argv[1:]
-log = os.environ.get("FAKE_GH_LOG")
+control = json.loads(
+    (Path(sys.argv[0]).resolve().parent / ".claude-advisor-test-control.json").read_text(
+        encoding="utf-8"
+    )
+)
+log = control.get("FAKE_GH_LOG")
 prior = []
 if log and os.path.exists(log):
     with open(log, encoding="utf-8") as handle:
@@ -204,9 +218,9 @@ if args == ["--version"]:
     print("gh version 2.92.0 (fake)")
     raise SystemExit(0)
 if args == ["auth", "status"]:
-    raise SystemExit(0 if os.environ.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
+    raise SystemExit(0 if control.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
 if args[:2] == ["pr", "diff"]:
-    forced_size = int(os.environ.get("FAKE_GH_DIFF_BYTES", "0"))
+    forced_size = int(control.get("FAKE_GH_DIFF_BYTES", "0"))
     if forced_size:
         sys.stdout.write("x" * forced_size)
         raise SystemExit(0)
@@ -219,8 +233,8 @@ if args[:2] == ["pr", "diff"]:
     raise SystemExit(0)
 if args[:2] == ["pr", "view"]:
     view_count = sum(1 for item in prior if item["args"][:2] == ["pr", "view"])
-    heads = os.environ.get("FAKE_GH_HEADS", "head-a,head-a").split(",")
-    bases = os.environ.get("FAKE_GH_BASES", "base-a,base-a").split(",")
+    heads = control.get("FAKE_GH_HEADS", "head-a,head-a").split(",")
+    bases = control.get("FAKE_GH_BASES", "base-a,base-a").split(",")
     head = heads[min(view_count, len(heads) - 1)]
     base = bases[min(view_count, len(bases) - 1)]
     print(json.dumps({
@@ -267,6 +281,8 @@ def fake_environment(
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_CLAUDE_RESULT": json.dumps(result or ADVISORY_RESULT),
             "ANTHROPIC_API_KEY": "preserve-this-auth-value",
+            "ANTHROPIC_BASE_URL": "https://must-not-reach-child.invalid",
+            "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "must-not-reach-child",
             "CLAUDE_CONFIG_DIR": "/must/not/reach/child",
             "CLAUDE_CODE_USE_BEDROCK": "must-not-reach-child",
         }
@@ -277,6 +293,12 @@ def fake_environment(
 def run_cli(
     args: list[str], *, cwd: Path, env: dict[str, str], timeout: float = 10
 ) -> subprocess.CompletedProcess[str]:
+    control = {name: value for name, value in env.items() if name.startswith("FAKE_")}
+    control_path = (
+        Path(env["CLAUDE_ADVISOR_CLAUDE_BIN"]).parent
+        / ".claude-advisor-test-control.json"
+    )
+    control_path.write_text(json.dumps(control), encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(RUNNER), *args],
         cwd=cwd,

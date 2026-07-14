@@ -55,6 +55,35 @@ Disposition: **accepted and hardened within the supported-version boundary**.
 
 Evidence: all dependency probes now use `stdin=DEVNULL`. The hidden-control probe has a five-second timeout and a `0.000001` requested budget, and still requires the deliberate sentinel to be named as the unknown option. Claude 2.1.209 was live-verified to reject the sentinel at parse time. Newer versions produce the existing behavior-compatibility warning and fail closed if the probe returns success, times out, or stops naming the sentinel. No local client can guarantee a future third-party parser will never initiate transport, so the project makes the supported/tested boundary explicit rather than claiming more.
 
+## Third review
+
+- Reviewed head: `6cf138cdce8101a39463bccb7ad603c18cbcdc0f`
+- Diff SHA-256: `006e8509ccf287c9e885a8c14d86768df9279378427b745923df84554bca3709`
+- Verdict: `comment`, medium confidence
+- Claude usage: two turns, USD 1.2031685 reported
+
+Claude again found no critical/high defect. It reported three low-severity hardening findings.
+
+### Third CA-1 — Doctor dependency probes buffered output
+
+Disposition: **accepted and fixed**.
+
+Evidence: `run_probe` now delegates to the same incremental bounded-process primitive as GitHub and analysis execution. Probe stdout is capped at 1 MiB and stderr at 1 MiB. Timeout, byte overflow, invalid UTF-8, and process-start failures produce exit 3. A fake-Claude regression emits 1 MiB plus one byte from `--version` and requires fail-closed rejection.
+
+### Third CA-2 — The hidden-control sentinel was brittle
+
+Disposition: **accepted and replaced with a stronger no-inference probe**.
+
+Evidence: live Claude 2.1.209 accepts `claude --max-turns 1 --version`, returns the same version string, and makes no inference call. Doctor now uses that command with empty stdin and a five-second timeout, requiring exit zero and an exact parsed-version match. This removes the invalid micro-budget, deliberate unknown option, and dependency on third-party error wording while preserving fail-closed recognition of the hidden control.
+
+### Third CA-3 — Child isolation used a denylist
+
+Disposition: **accepted and fixed by narrowing the V1 provider boundary**.
+
+Evidence: child environments are now constructed from an explicit allowlist covering process essentials, locale/temp paths, certificate and standard HTTP proxy configuration, GitHub authentication/configuration, and Anthropic's documented first-party credentials: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`. All other variables are dropped, including `ANTHROPIC_BASE_URL`, cloud-provider toggles, model/tool/plugin controls, and unknown future Claude variables. Tests prove a first-party API key survives while base-URL and experimental-agent variables do not. A live minimal-environment probe confirmed stored Claude.ai authentication still succeeds.
+
+This deliberately makes custom endpoints and Bedrock, Vertex, Foundry, and Mantle modes V1 non-goals. That is a more honest and testable privacy boundary than claiming independence while forwarding arbitrary provider configuration.
+
 ## Agreement status
 
-Pending a final installed-plugin delta review after the bounded-process and sentinel hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.
+Pending a final installed-plugin review after the third-review hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.

@@ -45,6 +45,7 @@ Claude Advisor standardizes that boundary while preserving human judgment.
 ## 4. Non-goals
 
 - Hosting a Claude proxy, MCP service, or shared OAuth session.
+- Routing analysis through a custom Anthropic base URL or the Bedrock, Vertex, Foundry, or Mantle provider modes in V1.
 - Supporting ChatGPT web or Codex cloud environments that cannot execute the local CLI.
 - Automatically invoking Claude based on task classification.
 - Automatically posting GitHub reviews, comments, approvals, labels, commits, or status checks.
@@ -120,8 +121,9 @@ Research was refreshed on 2026-07-14 against official documentation and live loc
 - OpenAI documents skills as instruction bundles with `SKILL.md`; plugin-owned skills can opt out of implicit invocation.
 - Anthropic documents `claude -p` for non-interactive execution, `--output-format json`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
 - The locally tested Claude CLI is `2.1.209`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
-- Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. Doctor verifies parser recognition without an API call by placing `--max-turns 1` and a near-zero positive budget before a deliberate sentinel unknown option, redirecting stdin from an empty source, applying a five-second timeout, and requiring the sentinel—not `--max-turns`—to be identified as unknown.
+- Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated analysis probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. Doctor verifies parser recognition without an inference call by running `claude --max-turns 1 --version` with empty stdin and a five-second timeout, requiring exit zero and the same parsed version as the primary version probe. This avoids depending on undocumented error wording or a deliberately invalid budget.
 - The exact authentication probe `claude auth status --json` was live-verified on 2.1.209. Exit 0 plus JSON boolean `loggedIn: true` is success. The command also returns identity and organization fields; the plugin must neither print nor persist those fields.
+- Anthropic documents that non-interactive Claude uses `ANTHROPIC_AUTH_TOKEN`, then `ANTHROPIC_API_KEY`, then `CLAUDE_CODE_OAUTH_TOKEN`, before stored subscription OAuth credentials. V1 passes only those documented first-party credential variables; it drops endpoint, provider-mode, model, tool, plugin, hook, and other Claude configuration environment variables.
 - GitHub CLI `2.92.0` was live-verified. `gh pr view --json baseRefOid,headRefOid,...` returned both object IDs against a live GitHub PR.
 - Anthropic documents that Pro and Max subscriptions can authenticate Claude Code and that Claude/Claude Code usage shares plan limits. API Console billing is separate. The plugin must not claim that a run is free or that a spend cap guarantees subscription availability.
 
@@ -133,6 +135,8 @@ Primary sources:
 - [Anthropic: Claude Code CLI reference](https://docs.anthropic.com/en/docs/claude-code/cli-reference)
 - [Anthropic: Run Claude Code programmatically](https://code.claude.com/docs/en/headless)
 - [Anthropic: Set up Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started)
+- [Anthropic: Claude Code environment variables](https://code.claude.com/docs/en/env-vars)
+- [Anthropic: Claude Code authentication](https://code.claude.com/docs/en/iam)
 - [Anthropic: Using Claude Code with Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
 
 ## 8. Functional requirements
@@ -152,7 +156,7 @@ The runner provides `doctor` and verifies:
 - GitHub CLI resolution and authentication when requested;
 - all advertised mandatory flags are present in `claude --help`: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`;
 - the installed version is at least the version on which the hidden-but-accepted `--max-turns` behavior was live-tested;
-- a no-API parser sentinel confirms that the installed CLI still recognizes `--max-turns`.
+- a no-inference version probe confirms that the installed CLI still recognizes `--max-turns`.
 
 Doctor fails closed when a mandatory flag is missing. It warns, but does not fail, when Claude is newer than the highest behavior-tested version, because flag presence does not prove unchanged semantics. Authentication output is reduced to non-identifying status fields before display or persistence.
 
@@ -182,7 +186,7 @@ GitHub mode uses argument-safe, read-only commands:
 
 GitHub stdout and stderr are read incrementally with byte ceilings; an oversized diff is terminated and rejected before assembly. The same bounded subprocess primitive caps Claude stdout and stderr before parsing. The runner reads `baseRefOid` and `headRefOid` before and after `gh pr diff` and aborts with exit 8 if either changed. The exact diff is hashed with SHA-256 and recorded. The receipt labels the content as the unified diff returned by GitHub's PR-diff endpoint; it does not claim that the content equals a local two-dot object range.
 
-V1 ceilings are 6 MiB for a PR diff or individual context file, 8 MiB for the assembled advisory input, 1 MiB for GitHub metadata, 16 MiB for Claude stdout, and 1 MiB for child-process stderr. The runner terminates the child and returns the corresponding fail-closed outcome as soon as a stream crosses its ceiling.
+V1 ceilings are 6 MiB for a PR diff or individual context file, 8 MiB for the assembled advisory input, 1 MiB for GitHub metadata or dependency-probe stdout, 16 MiB for Claude stdout, and 1 MiB for child-process stderr. The runner terminates the child and returns the corresponding fail-closed outcome as soon as a stream crosses its ceiling.
 
 ### FR-5: Structured outcomes
 
@@ -262,7 +266,7 @@ Untrusted data plane:
 - Build subprocess argument arrays and use `shell=False`.
 - Never accept arbitrary extra Claude or `gh` arguments.
 - Resolve executables from explicit overrides or `PATH`; record the path.
-- Remove customization controls `CLAUDE_CODE_SAFE_MODE`, `CLAUDE_CODE_SIMPLE`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CONFIG_DIR`, and `MCP_TIMEOUT` from the child environment so the runner's explicit mode wins. Preserve ordinary process essentials and provider authentication variables, including `ANTHROPIC_API_KEY`, `AWS_*`, `GOOGLE_*`, and Azure provider variables. Never log their values. Tests assert the denylist is absent and representative authentication variables survive.
+- Construct child environments from an explicit allowlist. Preserve only ordinary process essentials, locale/temp paths, certificate and standard HTTP proxy settings, GitHub CLI authentication/configuration variables, and the documented first-party Claude credential variables `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`. Force GitHub prompts off. Drop all other variables, including `ANTHROPIC_BASE_URL`, cloud-provider toggles and credentials, Claude configuration/model/tool/plugin controls, and future unknown Claude variables. Never log credential values. Tests assert representative first-party authentication survives while known and unknown customization variables do not.
 
 ### 9.3 Claude isolation
 

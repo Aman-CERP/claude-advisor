@@ -8,7 +8,7 @@ It is deliberately narrow: invocation is explicit, Claude receives a bounded con
 
 - `$claude-advisory` — compare options and obtain a structured recommendation for a bounded decision.
 - `$claude-pr-review` — review a GitHub PR or supplied diff with prioritized, evidence-oriented findings.
-- A dependency-free Python runner with stable exit codes, bounded inputs/time, reported turn/cost breach detection, secret screening, and owner-only artifacts.
+- A dependency-free Python runner with stable exit codes, bounded inputs and child-process streams, reported turn/cost breach detection, secret screening, an explicit child-environment allowlist, and owner-only artifacts.
 - A public Codex marketplace that can be installed once per local Codex user and used from every workspace on that machine.
 
 ## Prerequisites
@@ -19,7 +19,7 @@ It is deliberately narrow: invocation is explicit, Claude receives a bounded con
 - Claude Code 2.1.209 or newer, authenticated locally. V0.1.0 behavior-tested the isolation controls on 2.1.209; newer versions produce a warning until their no-tools behavior is reverified.
 - GitHub CLI 2.x, authenticated locally, only for GitHub PR mode.
 
-Install and authenticate Claude Code using [Anthropic's setup guide](https://docs.anthropic.com/en/docs/claude-code/getting-started). Each user must use their own Claude account or organization-approved provider credentials.
+Install and authenticate Claude Code using [Anthropic's setup guide](https://docs.anthropic.com/en/docs/claude-code/getting-started). Each user must use their own Claude account or organization-approved first-party Anthropic credential. V1 intentionally does not pass custom base URLs or Bedrock, Vertex, Foundry, or Mantle provider configuration to the child.
 
 ## Install in Codex
 
@@ -105,6 +105,8 @@ Run files use owner-only permissions where supported. Input hashes prove identit
 Selected questions, diffs, metadata, and context files are sent to Anthropic through the local Claude Code authentication. The plugin itself sends no telemetry and stores no credentials.
 
 The runner uses `--safe-mode`, an empty tool list, `--no-chrome`, and `--no-session-persistence`. It screens likely secret-bearing paths and high-confidence credential patterns, but this is not a complete DLP system. Review context before sending it. An explicit `--allow-sensitive-input` override is recorded in the receipt.
+
+The child receives a minimal allowlisted environment. Stored subscription OAuth, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN` are supported; endpoint overrides, cloud-provider modes, and unknown Claude configuration variables are removed. Standard certificate and HTTP proxy variables are retained for normal network compatibility.
 
 Do not use personal Claude OAuth as a backend for other users. This project is a local tool: every operator authenticates their own CLI. A future hosted service would require a separate API-based architecture, terms review, threat model, and specification.
 

@@ -96,7 +96,7 @@ Write failing tests against the specification before production runner code.
 
 ### 5.2 Required first-wave failures
 
-- doctor success, dependency/auth failures, and hidden `--max-turns` parser recognition;
+- doctor success, bounded dependency output, dependency/auth failures, and hidden `--max-turns` parser recognition through a no-inference version probe;
 - argument/ceiling validation;
 - exact isolation flags;
 - successful advisory parsing and artifact creation;
@@ -104,7 +104,7 @@ Write failing tests against the specification before production runner code.
 - bounded PR metadata/diff capture, hashing, and post-diff base/head race rejection;
 - secret-path and secret-pattern rejection/override, including secrets in questions and benign assignments;
 - deterministic report and package output;
-- child-environment denylist and authentication-variable preservation;
+- child-environment allowlist, first-party authentication-variable preservation, and unknown/customization-variable removal;
 - permission, `O_NOFOLLOW`, and symlink protections;
 - prompt structure proving every untrusted source is inside the evidence delimiters.
 

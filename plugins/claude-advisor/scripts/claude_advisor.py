@@ -32,6 +32,7 @@ MAX_INPUT_BYTES = 8 * 1024 * 1024
 MAX_CONTEXT_FILES = 32
 MAX_STDOUT_BYTES = 16 * 1024 * 1024
 MAX_GH_METADATA_BYTES = 1024 * 1024
+MAX_PROBE_STDOUT_BYTES = 1024 * 1024
 MAX_CHILD_STDERR_BYTES = 1024 * 1024
 
 EXIT_USAGE = 2
@@ -59,14 +60,49 @@ REQUIRED_HELP_FLAGS = (
     "--effort",
 )
 
-CUSTOMIZATION_ENV_DENYLIST = (
-    "CLAUDE_CODE_SAFE_MODE",
-    "CLAUDE_CODE_SIMPLE",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_USE_FOUNDRY",
-    "CLAUDE_CONFIG_DIR",
-    "MCP_TIMEOUT",
+CHILD_ENV_ALLOWLIST = frozenset(
+    {
+        "ALL_PROXY",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "COLORTERM",
+        "CURL_CA_BUNDLE",
+        "GCM_INTERACTIVE",
+        "GH_CONFIG_DIR",
+        "GH_ENTERPRISE_TOKEN",
+        "GH_HOST",
+        "GH_PROMPT_DISABLED",
+        "GH_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+        "GITHUB_TOKEN",
+        "HOME",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LOGNAME",
+        "NODE_EXTRA_CA_CERTS",
+        "NO_COLOR",
+        "NO_PROXY",
+        "PATH",
+        "REQUESTS_CA_BUNDLE",
+        "SHELL",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
+        "TEMP",
+        "TERM",
+        "TMP",
+        "TMPDIR",
+        "TZ",
+        "USER",
+        "XDG_CONFIG_HOME",
+        "all_proxy",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    }
 )
 
 SUPPORTED_SCHEMA_KEYS = {
@@ -220,9 +256,11 @@ def redact(text: str | bytes | None) -> tuple[str, int]:
 
 
 def child_environment() -> dict[str, str]:
-    env = os.environ.copy()
-    for name in CUSTOMIZATION_ENV_DENYLIST:
-        env.pop(name, None)
+    env = {
+        name: value for name, value in os.environ.items() if name in CHILD_ENV_ALLOWLIST
+    }
+    env["GH_PROMPT_DISABLED"] = "1"
+    env["GCM_INTERACTIVE"] = "Never"
     return env
 
 
@@ -352,24 +390,33 @@ def run_probe(
     command: list[str], *, timeout: int = 20
 ) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(
+        return_code, stdout, stderr = run_bounded_process(
             command,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            capture_output=True,
+            input_bytes=None,
             timeout=timeout,
-            check=False,
-            shell=False,
-            env=child_environment(),
+            max_stdout_bytes=MAX_PROBE_STDOUT_BYTES,
+            max_stderr_bytes=MAX_CHILD_STDERR_BYTES,
         )
-    except subprocess.TimeoutExpired as exc:
+    except BoundedProcessError as exc:
+        if exc.reason == "timeout":
+            message = "dependency probe timed out"
+        elif exc.reason == "limit":
+            message = f"dependency probe {exc.stream_name} exceeded the byte limit"
+        else:
+            message = "dependency probe could not start"
+        raise AdvisorError(EXIT_DEPENDENCY, message, outcome="unavailable") from exc
+    try:
+        stdout_text = stdout.decode("utf-8")
+        stderr_text = stderr.decode("utf-8")
+    except UnicodeDecodeError as exc:
         raise AdvisorError(
-            EXIT_DEPENDENCY, "dependency probe timed out", outcome="unavailable"
+            EXIT_DEPENDENCY,
+            "dependency probe output is not valid UTF-8",
+            outcome="unavailable",
         ) from exc
-    except OSError as exc:
-        raise AdvisorError(
-            EXIT_DEPENDENCY, "dependency probe could not start", outcome="unavailable"
-        ) from exc
+    return subprocess.CompletedProcess(
+        command, return_code, stdout=stdout_text, stderr=stderr_text
+    )
 
 
 def parse_version(raw: str, dependency: str) -> tuple[int, int, int]:
@@ -422,22 +469,21 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
             outcome="unavailable",
         )
 
-    hidden_turn_probe = "--claude-advisor-unknown-probe"
     turn_result = run_probe(
-        [
-            claude,
-            "--max-turns",
-            "1",
-            "--max-budget-usd",
-            "0.000001",
-            hidden_turn_probe,
-        ],
+        [claude, "--max-turns", "1", "--version"],
         timeout=5,
     )
-    if turn_result.returncode == 0 or hidden_turn_probe not in turn_result.stderr:
+    if turn_result.returncode != 0:
         raise AdvisorError(
             EXIT_DEPENDENCY,
             "Claude does not recognize the required hidden --max-turns control",
+            outcome="unavailable",
+        )
+    turn_probe_version = parse_version(turn_result.stdout, "Claude")
+    if turn_probe_version != version:
+        raise AdvisorError(
+            EXIT_DEPENDENCY,
+            "Claude hidden --max-turns probe returned an inconsistent version",
             outcome="unavailable",
         )
 
