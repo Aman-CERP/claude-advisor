@@ -27,11 +27,11 @@ Evidence: Claude 2.1.209 accepts `--max-turns` but omits it from help. Doctor no
 
 ## Verification gaps reconciled by Codex
 
-- Public CI passed on Python 3.11 and 3.12.
-- `make check` passed after both fixes with 23 tests.
+- Public CI passed on Python 3.11 and 3.12 on every published hardening head.
+- `make check` passed on the closure head with 29 tests.
 - Ruff lint and formatting checks passed.
-- Official Codex plugin and both skill validators passed before the initial PR review and will be rerun after the fixes.
-- Deterministic package and SHA-256 verification passed before the initial review and will be rerun on the final head.
+- Official Codex plugin and both skill validators passed on the closure head.
+- Deterministic package and SHA-256 verification passed; the plugin archive SHA-256 is `f630def0f95a2ac7e019e05c570dd4face6fce42f05944b4404f56c846c29ac3`.
 - Live Claude 2.1.209 doctor, structured advisory, turn-ceiling breach behavior, and no-tools side effects were exercised locally.
 
 ## Second review
@@ -140,4 +140,18 @@ Evidence: success now requires non-negative, correctly typed, finite `num_turns`
 
 ## Agreement status
 
-Pending a final installed-plugin delta review after the fifth-review hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.
+**AGREED — APPROVE.** No unresolved critical, high, medium, or low actionable finding remains in the reviewed implementation or closure delta.
+
+## Final closure-delta review
+
+- Reviewed delta: `cb05ea1e0c725b5b21b3960b6cd840f3abbe567c..3711ab7`
+- Diff SHA-256: `f247d8732d265f7f37b93b1cabfb47b289be599eddce42be9f8101b85c2853a5`
+- Verdict: `approve`, medium confidence
+- Claude usage: two turns, USD 0.2757405 reported
+- Findings: none
+
+The installed plugin traced the aggregate-input and typed-usage changes end to end and found them self-consistent and fail-closed. Its residual observations are accepted compatibility boundaries, not defects: integer turn counts are intentional and match Claude 2.1.209; PR diff plus context is still guarded by the unchanged final 8 MiB assembled-input check; and v0.1.0 has no prior downstream receipt contract to break.
+
+Codex reconciled the delta review's visibility gaps against the full source and live evidence: both question modes populate `question_info["bytes"]`; the final assembled-input ceiling remains active; the documented constants are present; raw Claude response and failure receipt are written before `usage_unverified`, while `result.json` is not; 29 tests and public Python 3.11/3.12 CI pass.
+
+This agreement follows five installed-plugin full-PR reviews plus the final immutable delta review. Every reproduced finding was fixed and re-tested; no review was treated as approval by assertion alone.
