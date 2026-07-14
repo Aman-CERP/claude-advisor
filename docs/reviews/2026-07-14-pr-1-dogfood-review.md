@@ -34,6 +34,27 @@ Evidence: Claude 2.1.209 accepts `--max-turns` but omits it from help. Doctor no
 - Deterministic package and SHA-256 verification passed before the initial review and will be rerun on the final head.
 - Live Claude 2.1.209 doctor, structured advisory, turn-ceiling breach behavior, and no-tools side effects were exercised locally.
 
+## Second review
+
+- Reviewed head: `a343b4fe264cf7b947202924897b17005df0130a`
+- Diff SHA-256: `396d92ed8da7df427ca646d5d5c0655b2c36378d0e0bcfee9a5e9869b93e76b4`
+- Verdict: `comment`, medium confidence
+- Claude usage: two turns, USD 1.0935145 reported
+
+Claude confirmed both initial findings were fixed and reported no critical/high defect. It identified two new low-severity reliability gaps.
+
+### Second F-1 — Claude stdout was buffered before its byte check
+
+Disposition: **accepted and fixed**.
+
+Evidence: Claude analysis previously used `subprocess.run(..., capture_output=True)` and checked 16 MiB only after completion. GitHub and Claude now share one bounded subprocess primitive that supplies stdin from an owner-private temporary file, reads stdout/stderr incrementally, terminates on timeout or byte-limit breach, and returns bounded byte buffers. An oversized fake-Claude test requires exit 7 before JSON parsing.
+
+### Second F-2 — Parser sentinel could inherit stdin or drift into an API call
+
+Disposition: **accepted and hardened within the supported-version boundary**.
+
+Evidence: all dependency probes now use `stdin=DEVNULL`. The hidden-control probe has a five-second timeout and a `0.000001` requested budget, and still requires the deliberate sentinel to be named as the unknown option. Claude 2.1.209 was live-verified to reject the sentinel at parse time. Newer versions produce the existing behavior-compatibility warning and fail closed if the probe returns success, times out, or stops naming the sentinel. No local client can guarantee a future third-party parser will never initiate transport, so the project makes the supported/tested boundary explicit rather than claiming more.
+
 ## Agreement status
 
-Pending a second installed-plugin review of the updated PR head. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.
+Pending a final installed-plugin delta review after the bounded-process and sentinel hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.

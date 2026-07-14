@@ -221,6 +221,29 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(receipt["outcome"], "claude_failed")
             self.assertNotIn("very-secret-value", (run_dir / "stderr.log").read_text())
 
+    def test_advisory_bounds_claude_stdout_before_json_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_STDOUT_BYTES"] = str(16 * 1024 * 1024 + 1)
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 7, completed.stderr)
+            self.assertIn("byte limit", completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["outcome"], "invalid_result")
+
     def test_timeout_path_writes_failure_receipt_without_weakening_minimum(
         self,
     ) -> None:
@@ -240,10 +263,10 @@ class AdvisoryTests(unittest.TestCase):
                 "warnings": [],
             }
             with mock.patch.object(
-                runner.subprocess,
-                "run",
-                side_effect=runner.subprocess.TimeoutExpired(
-                    ["/fake/claude"], 60, stderr="token=very-secret-value"
+                runner,
+                "run_bounded_process",
+                side_effect=runner.BoundedProcessError(
+                    "timeout", stderr=b"token=very-secret-value"
                 ),
             ):
                 with self.assertRaises(runner.AdvisorError) as captured:

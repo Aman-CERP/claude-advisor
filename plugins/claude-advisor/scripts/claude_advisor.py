@@ -32,7 +32,7 @@ MAX_INPUT_BYTES = 8 * 1024 * 1024
 MAX_CONTEXT_FILES = 32
 MAX_STDOUT_BYTES = 16 * 1024 * 1024
 MAX_GH_METADATA_BYTES = 1024 * 1024
-MAX_GH_STDERR_BYTES = 1024 * 1024
+MAX_CHILD_STDERR_BYTES = 1024 * 1024
 
 EXIT_USAGE = 2
 EXIT_DEPENDENCY = 3
@@ -158,6 +158,24 @@ class AdvisorError(Exception):
         self.stderr_text = stderr_text
 
 
+class BoundedProcessError(Exception):
+    """Internal process failure with bounded partial output for classification."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        stream_name: str | None = None,
+        stdout: bytes = b"",
+        stderr: bytes = b"",
+    ) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.stream_name = stream_name
+        self.stdout = stdout
+        self.stderr = stderr
+
+
 class SafeArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
         raise AdvisorError(EXIT_USAGE, f"invalid usage: {message}", outcome="rejected")
@@ -208,6 +226,99 @@ def child_environment() -> dict[str, str]:
     return env
 
 
+def run_bounded_process(
+    command: list[str],
+    *,
+    input_bytes: bytes | None,
+    timeout: int,
+    max_stdout_bytes: int,
+    max_stderr_bytes: int,
+) -> tuple[int, bytes, bytes]:
+    process: subprocess.Popen[bytes] | None = None
+    input_file = None
+    selector = selectors.DefaultSelector()
+    stdout = bytearray()
+    stderr = bytearray()
+    deadline = time.monotonic() + timeout
+    try:
+        stdin_source: Any = subprocess.DEVNULL
+        if input_bytes is not None:
+            input_file = tempfile.TemporaryFile(mode="w+b")
+            input_file.write(input_bytes)
+            input_file.seek(0)
+            stdin_source = input_file
+        process = subprocess.Popen(
+            command,
+            stdin=stdin_source,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            env=child_environment(),
+        )
+        if process.stdout is None or process.stderr is None:
+            raise BoundedProcessError("start_failed")
+        selector.register(
+            process.stdout,
+            selectors.EVENT_READ,
+            (stdout, max_stdout_bytes, "stdout"),
+        )
+        selector.register(
+            process.stderr,
+            selectors.EVENT_READ,
+            (stderr, max_stderr_bytes, "stderr"),
+        )
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise BoundedProcessError(
+                    "timeout", stdout=bytes(stdout), stderr=bytes(stderr)
+                )
+            for key, _ in selector.select(timeout=min(remaining, 0.25)):
+                target, limit, stream_name = key.data
+                chunk = os.read(key.fileobj.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                target.extend(chunk)
+                if len(target) > limit:
+                    raise BoundedProcessError(
+                        "limit",
+                        stream_name=stream_name,
+                        stdout=bytes(stdout),
+                        stderr=bytes(stderr),
+                    )
+        return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+        return return_code, bytes(stdout), bytes(stderr)
+    except BoundedProcessError:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        raise
+    except subprocess.TimeoutExpired as exc:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        raise BoundedProcessError(
+            "timeout", stdout=bytes(stdout), stderr=bytes(stderr)
+        ) from exc
+    except OSError as exc:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        raise BoundedProcessError(
+            "start_failed", stdout=bytes(stdout), stderr=bytes(stderr)
+        ) from exc
+    finally:
+        selector.close()
+        if process is not None:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+        if input_file is not None:
+            input_file.close()
+
+
 def resolve_executable(env_name: str, fallback: str) -> str:
     configured = os.environ.get(env_name)
     candidate = configured if configured else shutil.which(fallback)
@@ -243,6 +354,7 @@ def run_probe(
     try:
         return subprocess.run(
             command,
+            stdin=subprocess.DEVNULL,
             text=True,
             capture_output=True,
             timeout=timeout,
@@ -311,7 +423,17 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
         )
 
     hidden_turn_probe = "--claude-advisor-unknown-probe"
-    turn_result = run_probe([claude, "--max-turns", "1", hidden_turn_probe])
+    turn_result = run_probe(
+        [
+            claude,
+            "--max-turns",
+            "1",
+            "--max-budget-usd",
+            "0.000001",
+            hidden_turn_probe,
+        ],
+        timeout=5,
+    )
     if turn_result.returncode == 0 or hidden_turn_probe not in turn_result.stderr:
         raise AdvisorError(
             EXIT_DEPENDENCY,
@@ -1000,50 +1122,66 @@ def execute_claude(
 
     try:
         try:
-            completed = subprocess.run(
+            claude_exit_code, claude_stdout, claude_stderr = run_bounded_process(
                 command,
-                input=untrusted_input,
-                text=True,
-                capture_output=True,
+                input_bytes=untrusted_input.encode("utf-8"),
                 timeout=limits["timeout"],
-                check=False,
-                shell=False,
-                env=child_environment(),
+                max_stdout_bytes=MAX_STDOUT_BYTES,
+                max_stderr_bytes=MAX_CHILD_STDERR_BYTES,
             )
-        except subprocess.TimeoutExpired as exc:
+        except BoundedProcessError as exc:
             timeout_stderr, redactions = redact(exc.stderr)
             atomic_write_text(stderr_path, timeout_stderr)
             receipt["stderr_redactions"] = redactions
+            if exc.reason == "limit" and exc.stream_name == "stdout":
+                raise AdvisorError(
+                    EXIT_INVALID_RESULT,
+                    "Claude response exceeds the output byte limit",
+                    outcome="invalid_result",
+                    stderr_text=timeout_stderr,
+                ) from exc
+            if exc.reason == "limit":
+                raise AdvisorError(
+                    EXIT_CLAUDE,
+                    "Claude diagnostics exceeded the output byte limit",
+                    outcome="claude_failed",
+                    stderr_text=timeout_stderr,
+                ) from exc
+            if exc.reason == "start_failed":
+                raise AdvisorError(
+                    EXIT_CLAUDE,
+                    "Claude analysis could not start",
+                    outcome="claude_failed",
+                    stderr_text=timeout_stderr,
+                ) from exc
             raise AdvisorError(
                 EXIT_TIMEOUT,
                 "Claude analysis timed out",
                 outcome="timeout",
                 stderr_text=timeout_stderr,
             ) from exc
-        except OSError as exc:
-            raise AdvisorError(
-                EXIT_CLAUDE, "Claude analysis could not start", outcome="claude_failed"
-            ) from exc
 
-        sanitized_stderr, redactions = redact(completed.stderr)
+        sanitized_stderr, redactions = redact(claude_stderr)
         atomic_write_text(stderr_path, sanitized_stderr)
         receipt["stderr_redactions"] = redactions
-        receipt["claude_exit_code"] = completed.returncode
-        if completed.returncode != 0:
+        receipt["claude_exit_code"] = claude_exit_code
+        if claude_exit_code != 0:
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude analysis failed",
                 outcome="claude_failed",
                 stderr_text=sanitized_stderr,
             )
-        if len(completed.stdout.encode("utf-8")) > MAX_STDOUT_BYTES:
+        try:
+            claude_stdout_text = claude_stdout.decode("utf-8")
+        except UnicodeDecodeError as exc:
             raise AdvisorError(
                 EXIT_INVALID_RESULT,
-                "Claude response exceeds the output byte limit",
+                "Claude response is not valid UTF-8",
                 outcome="invalid_result",
-            )
+            ) from exc
         try:
-            envelope = json.loads(completed.stdout)
+            envelope = json.loads(claude_stdout_text)
         except json.JSONDecodeError as exc:
             raise AdvisorError(
                 EXIT_INVALID_RESULT,
@@ -1244,76 +1382,32 @@ PR_FIELDS = (
 def gh_command(
     gh: str, arguments: list[str], *, max_stdout_bytes: int = MAX_GH_METADATA_BYTES
 ) -> str:
-    process: subprocess.Popen[bytes] | None = None
-    selector = selectors.DefaultSelector()
-    stdout = bytearray()
-    stderr = bytearray()
-    deadline = time.monotonic() + 60
     try:
-        process = subprocess.Popen(
+        return_code, stdout, _ = run_bounded_process(
             [gh, *arguments],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=False,
-            env=child_environment(),
+            input_bytes=None,
+            timeout=60,
+            max_stdout_bytes=max_stdout_bytes,
+            max_stderr_bytes=MAX_CHILD_STDERR_BYTES,
         )
-        if process.stdout is None or process.stderr is None:
+    except BoundedProcessError as exc:
+        if exc.reason == "timeout":
             raise AdvisorError(
-                EXIT_GITHUB, "GitHub read failed", outcome="github_failed"
-            )
-        selector.register(
-            process.stdout,
-            selectors.EVENT_READ,
-            (stdout, max_stdout_bytes, "stdout"),
-        )
-        selector.register(
-            process.stderr,
-            selectors.EVENT_READ,
-            (stderr, MAX_GH_STDERR_BYTES, "stderr"),
-        )
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise AdvisorError(
-                    EXIT_GITHUB, "GitHub read timed out", outcome="github_failed"
-                )
-            for key, _ in selector.select(timeout=min(remaining, 0.25)):
-                target, limit, stream_name = key.data
-                chunk = os.read(key.fileobj.fileno(), 65536)
-                if not chunk:
-                    selector.unregister(key.fileobj)
-                    continue
-                target.extend(chunk)
-                if len(target) > limit:
-                    raise AdvisorError(
-                        EXIT_GITHUB,
-                        f"GitHub {stream_name} exceeded the byte limit",
-                        outcome="github_failed",
-                    )
-        return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
-    except AdvisorError:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait()
-        raise
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait()
+                EXIT_GITHUB, "GitHub read timed out", outcome="github_failed"
+            ) from exc
+        if exc.reason == "limit":
+            raise AdvisorError(
+                EXIT_GITHUB,
+                f"GitHub {exc.stream_name} exceeded the byte limit",
+                outcome="github_failed",
+            ) from exc
         raise AdvisorError(
             EXIT_GITHUB, "GitHub read failed", outcome="github_failed"
         ) from exc
-    finally:
-        selector.close()
-        if process is not None:
-            if process.stdout is not None:
-                process.stdout.close()
-            if process.stderr is not None:
-                process.stderr.close()
     if return_code != 0:
         raise AdvisorError(EXIT_GITHUB, "GitHub read failed", outcome="github_failed")
     try:
-        return bytes(stdout).decode("utf-8")
+        return stdout.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise AdvisorError(
             EXIT_GITHUB, "GitHub output is not valid UTF-8", outcome="github_failed"

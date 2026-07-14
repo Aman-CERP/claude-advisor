@@ -113,7 +113,13 @@ if args == ["--help"]:
     print("\n".join(flag for flag in flags if flag != missing))
     raise SystemExit(0)
 
-if args == ["--max-turns", "1", "--claude-advisor-unknown-probe"]:
+if args == [
+    "--max-turns",
+    "1",
+    "--max-budget-usd",
+    "0.000001",
+    "--claude-advisor-unknown-probe",
+]:
     if os.environ.get("FAKE_CLAUDE_MAX_TURNS", "present") == "present":
         print("error: unknown option '--claude-advisor-unknown-probe'", file=sys.stderr)
     else:
@@ -136,6 +142,10 @@ if args == ["auth", "status", "--json"]:
 
 mode = os.environ.get("FAKE_CLAUDE_MODE", "success")
 _ = sys.stdin.read()
+forced_stdout = int(os.environ.get("FAKE_CLAUDE_STDOUT_BYTES", "0"))
+if forced_stdout:
+    sys.stdout.write("x" * forced_stdout)
+    raise SystemExit(0)
 if mode == "timeout":
     time.sleep(10)
 if mode == "error":

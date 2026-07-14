@@ -123,7 +123,7 @@ Implement in this dependency order:
 5. run-directory allocation and receipt lifecycle;
 6. bounded, symlink-safe input reader;
 7. sensitive-input scanner and redactor;
-8. subprocess executor with argument arrays, controlled environment, timeout, and captured streams;
+8. bounded subprocess executor with argument arrays, controlled environment, empty/provided stdin, incremental stdout/stderr ceilings, timeout, and child termination;
 9. doctor checks;
 10. Claude envelope and structured-output extraction;
 11. deterministic schema validation and Markdown rendering; the validator implements every keyword used by bundled schemas (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`) and treats unsupported bundled keywords as build errors;
