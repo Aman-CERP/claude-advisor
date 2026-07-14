@@ -1,9 +1,9 @@
 ---
-name: claude-pr-review
-description: Ask the locally authenticated Claude Code CLI for an explicit, read-only adversarial review of a GitHub pull request or supplied unified diff. Use only when the user explicitly requests Claude, this skill, cross-model review, or a Claude PR opinion; never invoke it implicitly.
+name: independent-pr-review
+description: Obtain an explicit, read-only adversarial review of a GitHub pull request or supplied unified diff through the user's separately installed Claude Code CLI. Use only when the user explicitly requests $independent-pr-review, Second Opinion by AmanERP, cross-model review, or a Claude-based PR opinion; never invoke it implicitly.
 ---
 
-# Claude Pull-Request Review
+# Independent Pull-Request Review
 
 Use this skill for an independent review snapshot with durable provenance. It never posts to GitHub, approves, comments, edits, or merges.
 
@@ -19,7 +19,7 @@ Use this skill for an independent review snapshot with durable provenance. It ne
 ## Workflow
 
 1. Identify the authoritative repository and PR number. Confirm the requested review scope and whether it is critical (auth, tenancy, billing, migrations, PII, secrets, destructive operations, or release gating).
-2. Resolve `../../scripts/claude_advisor.py` relative to this `SKILL.md` to an absolute `RUNNER` path. Never guess a plugin-cache path.
+2. Resolve `../../scripts/second_opinion.py` relative to this `SKILL.md` to an absolute `RUNNER` path. Never guess a plugin-cache path.
 3. Run `python3 "$RUNNER" doctor --require-gh` for GitHub mode. Stop and report any non-zero outcome.
 4. Run `pr-review --pr N --repo OWNER/REPO`. Add `--critical` for a critical surface. For pre-PR or offline work, use `--diff-file` plus `--source-label` instead.
 5. The runner reads PR metadata, captures the unified diff, reads the head object ID again, and aborts if the PR changed during capture.

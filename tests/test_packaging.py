@@ -35,8 +35,10 @@ class PackagingTests(unittest.TestCase):
             with zipfile.ZipFile(archive) as packaged:
                 names = packaged.namelist()
                 self.assertEqual(names, sorted(names))
-                self.assertIn("claude-advisor/.codex-plugin/plugin.json", names)
-                self.assertIn("claude-advisor/scripts/claude_advisor.py", names)
+                self.assertIn("amanerp-second-opinion/.codex-plugin/plugin.json", names)
+                self.assertIn("amanerp-second-opinion/scripts/second_opinion.py", names)
+                self.assertIn("amanerp-second-opinion/LICENSE", names)
+                self.assertIn("amanerp-second-opinion/NOTICE", names)
                 self.assertFalse(
                     any("tests/" in name or "__pycache__" in name for name in names)
                 )

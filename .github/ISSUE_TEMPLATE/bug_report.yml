@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible defect using synthetic or public data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private diffs, personal data, or confidential model output. Report security vulnerabilities privately under the repository Security tab.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - WSL (unverified)
+        - Other or unsupported
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Python, Codex, Claude Code, and gh versions
+      description: Include only version strings; do not include account or identity output.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Safe reproduction
+      description: Use synthetic files or a public repository and list the smallest steps that reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior and redacted diagnostics
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data-safety confirmation
+      options:
+        - label: I removed credentials, private repository content, personal data, and confidential model output.
+          required: true
+        - label: This report is not a security vulnerability requiring private disclosure.
+          required: true

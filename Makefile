@@ -20,10 +20,10 @@ package-repro-check:
 	$(PYTHON) -m unittest -v tests.test_packaging.PackagingTests.test_package_is_deterministic_and_contains_only_plugin_files
 
 doctor:
-	$(PYTHON) plugins/claude-advisor/scripts/claude_advisor.py doctor --require-gh
+	$(PYTHON) plugins/amanerp-second-opinion/scripts/second_opinion.py doctor --require-gh
 
 live-smoke: doctor
 	@echo "Doctor passed. Run the documented advisory and supplied-diff smoke with approved synthetic input."
 
 clean:
-	rm -rf dist plugins/claude-advisor/scripts/__pycache__ scripts/__pycache__ tests/__pycache__
+	rm -rf dist plugins/amanerp-second-opinion/scripts/__pycache__ scripts/__pycache__ tests/__pycache__

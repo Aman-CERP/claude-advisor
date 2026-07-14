@@ -1,14 +1,14 @@
 {
-  "name": "aman-cerp",
+  "name": "amanerp",
   "interface": {
-    "displayName": "Aman-CERP"
+    "displayName": "AmanERP"
   },
   "plugins": [
     {
-      "name": "claude-advisor",
+      "name": "amanerp-second-opinion",
       "source": {
         "source": "local",
-        "path": "./plugins/claude-advisor"
+        "path": "./plugins/amanerp-second-opinion"
       },
       "policy": {
         "installation": "AVAILABLE",

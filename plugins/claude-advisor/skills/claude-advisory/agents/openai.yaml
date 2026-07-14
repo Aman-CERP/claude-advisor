@@ -1,7 +1,0 @@
-interface:
-  display_name: "Claude Advisory"
-  short_description: "Independent Claude advice for hard decisions"
-  default_prompt: "Use $claude-advisory to ask Claude for a bounded second opinion on this decision."
-
-policy:
-  allow_implicit_invocation: false

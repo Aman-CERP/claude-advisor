@@ -1,11 +1,11 @@
 # Contributing
 
-Thank you for helping improve Claude Advisor.
+Thank you for helping improve Second Opinion by AmanERP.
 
 ## Before proposing a change
 
 - Open an issue for public-contract, trust-boundary, distribution, authentication, or hosted-service changes.
-- Keep personal OAuth local. Hosted or shared execution is outside V1 and requires API-based architecture plus a separate legal/security review.
+- Keep personal OAuth local. Hosted or shared execution is outside the current contract and requires API-based architecture plus a separate legal and security review.
 - Do not add a runtime dependency without documenting license, supply-chain, maintenance, and reproducibility implications.
 
 ## Local workflow

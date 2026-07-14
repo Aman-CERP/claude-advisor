@@ -1,0 +1,7 @@
+interface:
+  display_name: "Independent Advisory"
+  short_description: "Bounded second opinions for hard decisions"
+  default_prompt: "Use $independent-advisory to obtain a bounded second opinion on this decision."
+
+policy:
+  allow_implicit_invocation: false

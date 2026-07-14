@@ -1,12 +1,12 @@
 [project]
-name = "claude-advisor"
-version = "0.1.0"
-description = "A safety-first Codex plugin for independent Claude advisory and PR reviews"
+name = "amanerp-second-opinion"
+version = "0.2.0"
+description = "A safety-first Codex plugin for independent advisory and PR reviews"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [
-  { name = "Aman-CERP" }
+  { name = "AmanERP", email = "hello@amanerp.com" }
 ]
 keywords = ["claude", "codex", "code-review", "advisory"]
 classifiers = [
@@ -20,6 +20,6 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/Aman-CERP/claude-advisor"
-Repository = "https://github.com/Aman-CERP/claude-advisor"
-Issues = "https://github.com/Aman-CERP/claude-advisor/issues"
+Homepage = "https://amanerp.com/developer-tools/second-opinion"
+Repository = "https://github.com/Aman-CERP/amanerp-second-opinion"
+Issues = "https://github.com/Aman-CERP/amanerp-second-opinion/issues"

@@ -17,6 +17,6 @@ Operate in precision engineering mode. Prefer the smallest maintainable change t
 2. Add or update failing tests before production behavior.
 3. Run `make check`, `make package`, and `make package-repro-check`.
 4. Run the official Codex plugin and skill validators when available.
-5. For a release PR, dogfood `$claude-pr-review`, disposition every high/medium finding with evidence, and rerun after material fixes.
+5. For a release PR, dogfood `$independent-pr-review`, disposition every high/medium finding with evidence, and rerun after material fixes.
 
 Do not commit credentials, local run artifacts, distribution output, caches, or maintainer-specific absolute paths.

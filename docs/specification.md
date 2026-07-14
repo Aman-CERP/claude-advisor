@@ -1,17 +1,18 @@
-# Claude Advisor v0.1.0 — Product and Engineering Specification
+# Second Opinion by AmanERP v0.2.0 — Product and Engineering Specification
 
 Status: Approved for implementation  
 Date: 2026-07-14  
-Owner: Aman-CERP maintainers  
-Repository: `Aman-CERP/claude-advisor`  
+Last amended: 2026-07-14
+Owner: AmanERP maintainers
+Repository: `Aman-CERP/amanerp-second-opinion`
 License: Apache-2.0
 
 ## 1. Executive summary
 
-Claude Advisor is an open-source Codex plugin that lets an operator explicitly ask a locally installed Claude Code CLI for a second opinion. Version 0.1.0 ships two skills:
+Second Opinion by AmanERP is an open-source Codex plugin that lets an operator explicitly obtain an independent analysis through a separately installed and locally authenticated Claude Code CLI. Version 0.2.0 ships two skills:
 
-- `claude-advisory`: structured analysis and recommendations for a bounded decision.
-- `claude-pr-review`: an independent, evidence-oriented review of a GitHub pull request or a supplied Git diff.
+- `independent-advisory`: structured analysis and recommendations for a bounded decision.
+- `independent-pr-review`: an independent, evidence-oriented review of a GitHub pull request or a supplied Git diff.
 
 The plugin is a local orchestration layer, not a hosted Claude service. Each operator installs and authenticates Claude Code on their own workstation. The plugin never redistributes a personal OAuth session, never exposes a network service, and never publishes comments or changes code by itself.
 
@@ -29,7 +30,7 @@ Critical architecture decisions and pull-request reviews benefit from a genuinel
 - output is easy to lose and hard to audit;
 - review results can accidentally be treated as approval rather than advice.
 
-Claude Advisor standardizes that boundary while preserving human judgment.
+Second Opinion standardizes that boundary while preserving human judgment.
 
 ## 3. Goals
 
@@ -39,8 +40,10 @@ Claude Advisor standardizes that boundary while preserving human judgment.
 4. Produce structured, schema-validated results and provenance receipts.
 5. Enforce deterministic input/time ceilings and fail closed when Claude reports exceeding requested turn or spend ceilings.
 6. Fail visibly on missing prerequisites, authentication failures, timeouts, non-zero exits, incomplete results, or malformed output.
-7. Make the plugin installable from a public Codex marketplace repository and available across all local workspaces for that Codex user.
+7. Make the plugin installable from a public Codex marketplace repository and eligible for OpenAI Plugin Directory review while remaining available across all local workspaces for that Codex user.
 8. Keep V1 dependency-free beyond Python 3.11+, Git, GitHub CLI for PR mode, and Claude Code.
+9. Publish under the verified AmanERP identity with accurate public support, privacy, terms, and data-flow disclosures.
+10. Keep the customer-facing product identity independent from Anthropic trademarks and state the third-party dependency without implying affiliation or endorsement.
 
 ## 4. Non-goals
 
@@ -58,7 +61,7 @@ Claude Advisor standardizes that boundary while preserving human judgment.
 
 ### 5.1 Decision advisory
 
-An engineer has a bounded decision with multiple viable options. Codex gathers the decision, constraints, evidence, and optionally selected context files, then explicitly invokes `claude-advisory`. The output must distinguish facts, inferences, assumptions, unresolved questions, options, risks, and a recommended next step.
+An engineer has a bounded decision with multiple viable options. Codex gathers the decision, constraints, evidence, and optionally selected context files, then explicitly invokes `independent-advisory`. The output must distinguish facts, inferences, assumptions, unresolved questions, options, risks, and a recommended next step.
 
 ### 5.2 Pull-request review
 
@@ -71,6 +74,10 @@ An engineer wants a pre-PR or offline review. Codex supplies an existing unified
 ### 5.4 Team distribution
 
 The public repository is registered as a Codex plugin marketplace. Installation is global to the local Codex user, so one installation is visible from every AmanERP checkout on that machine. Teammates on separate machines run the documented marketplace-add and plugin-add commands once and authenticate their own Claude CLI.
+
+### 5.5 Public-directory discovery
+
+The release repository contains reviewer-ready listing metadata, five positive test cases, three negative test cases, release notes, policy attestations, and a setup guide. Directory copy names AmanERP as publisher, describes the separately installed Claude Code dependency accurately, and identifies the plugin as local Codex software. Publication in OpenAI's directory remains subject to OpenAI review and a verified AmanERP business identity.
 
 ## 6. Scope-challenge record
 
@@ -108,6 +115,8 @@ Verdict: GO.
 - A public marketplace repository is the right distribution primitive for a reusable team workflow.
 - A local CLI integration is portable across local Codex workspaces but cannot transparently run in hosted environments. That limitation must remain prominent.
 - Every teammate supplies their own Anthropic authentication and bears their own usage limits or API billing.
+- OpenAI's public submission flow accepts skills-only plugins but requires reproducible reviewer materials, public legal/support URLs, policy attestations, and a verified publisher identity.
+- The customer-facing name must not contain `Claude`, `Claude Code`, or other Anthropic marks unless Anthropic grants written permission. Truthful dependency references must not imply sponsorship, partnership, or endorsement.
 
 ### 6.5 Scope decision
 
@@ -118,7 +127,9 @@ Proceed with V1 as a local-only, non-mutating, explicit plugin. Defer remote MCP
 Research was refreshed on 2026-07-14 against official documentation and live local probes.
 
 - OpenAI documents plugins as the stable packaging mechanism for sharing skills across teams; a plugin requires `.codex-plugin/plugin.json` and can be distributed through a marketplace repository.
+- OpenAI's submission portal explicitly accepts skills-only plugins. Its current checklist requires a verified developer or business identity, public website/support/privacy/terms URLs, final skill files, starter prompts, exactly five positive and three negative test cases, availability, release notes, and policy attestations.
 - OpenAI documents skills as instruction bundles with `SKILL.md`; plugin-owned skills can opt out of implicit invocation.
+- OpenAI documents that supported surface and capability availability can vary; this release therefore advertises local Codex use only and fails clearly when its local executable prerequisites are unavailable.
 - Anthropic documents `claude -p` for non-interactive execution, `--output-format json`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
 - The locally tested Claude CLI is `2.1.209`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
 - Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated analysis probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. Doctor verifies parser recognition without an inference call by running `claude --max-turns 1 --version` with empty stdin and the same named 20-second timeout as other dependency probes, requiring exit zero and the same parsed version as the primary version probe. This avoids depending on undocumented error wording or a deliberately invalid budget.
@@ -126,24 +137,27 @@ Research was refreshed on 2026-07-14 against official documentation and live loc
 - Anthropic documents that non-interactive Claude uses `ANTHROPIC_AUTH_TOKEN`, then `ANTHROPIC_API_KEY`, then `CLAUDE_CODE_OAUTH_TOKEN`, before stored subscription OAuth credentials. V1 passes only those documented first-party credential variables; it drops endpoint, provider-mode, model, tool, plugin, hook, and other Claude configuration environment variables.
 - GitHub CLI `2.92.0` was live-verified. `gh pr view --json baseRefOid,headRefOid,...` returned both object IDs against a live GitHub PR.
 - Anthropic documents that Pro and Max subscriptions can authenticate Claude Code and that Claude/Claude Code usage shares plan limits. API Console billing is separate. The plugin must not claim that a run is free or that a spend cap guarantees subscription availability.
+- Anthropic's trademark guidelines prohibit implying sponsorship or affiliation and reserve permission to use its marks. The product therefore uses an AmanERP-owned name and mentions Claude Code only to identify the required third-party executable and data destination.
 
 Primary sources:
 
 - [OpenAI: Build plugins](https://learn.chatgpt.com/docs/build-plugins)
 - [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills)
 - [OpenAI: Plugins](https://learn.chatgpt.com/docs/plugins)
+- [OpenAI: Submit plugins](https://learn.chatgpt.com/docs/submit-plugins)
 - [Anthropic: Claude Code CLI reference](https://docs.anthropic.com/en/docs/claude-code/cli-reference)
 - [Anthropic: Run Claude Code programmatically](https://code.claude.com/docs/en/headless)
 - [Anthropic: Set up Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started)
 - [Anthropic: Claude Code environment variables](https://code.claude.com/docs/en/env-vars)
 - [Anthropic: Claude Code authentication](https://code.claude.com/docs/en/iam)
 - [Anthropic: Using Claude Code with Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
+- [Anthropic: Trademark guidelines](https://www.anthropic.com/legal/trademark-guidelines)
 
 ## 8. Functional requirements
 
 ### FR-1: Explicit skill invocation
 
-The plugin exposes exactly two user-facing skills in V1. Neither may be implicitly invoked.
+The plugin exposes exactly two user-facing skills in V1. Neither may be implicitly invoked. Their names are `independent-advisory` and `independent-pr-review`.
 
 ### FR-2: Preflight doctor
 
@@ -168,7 +182,7 @@ The runner provides `advisory` with:
 
 - exactly one question source: `--question` or `--question-file`;
 - zero or more `--context-file` arguments;
-- explicit `--output-dir` or a safe default under `.codex/claude-advisor/`;
+- explicit `--output-dir` or a safe default under `.codex/amanerp-second-opinion/`;
 - configurable model, effort, requested maximum turns/budget, parent-enforced timeout, and total input bytes within validated bounds;
 - schema-validated Claude output.
 
@@ -300,7 +314,7 @@ The default check is intentionally conservative but not a DLP guarantee. `--allo
 
 ### 9.5 Filesystem controls
 
-- Default output remains inside the current repository under `.codex/claude-advisor/runs/`.
+- Default output remains inside the current repository under `.codex/amanerp-second-opinion/runs/`.
 - Run directories use collision-resistant identifiers.
 - Files are written atomically and use owner-only permissions where supported.
 - Symlink output directories and symlink context files are rejected by default.
@@ -349,20 +363,70 @@ Both prompts must:
 
 The PR prompt additionally requires review of auth boundaries, tenant isolation, data loss, migrations, API compatibility, concurrency, idempotency, observability, rollback, and failure-path tests when relevant.
 
-## 12. Compatibility
+## 12. Publication contract
+
+### 12.1 Public identity
+
+- Plugin identifier: `amanerp-second-opinion`.
+- Customer-facing name: `Second Opinion by AmanERP`.
+- Publisher: `AmanERP`, backed by a verified OpenAI Platform business identity before submission.
+- Marketplace identifier and display name: `amanerp` and `AmanERP`.
+- Public repository: `https://github.com/Aman-CERP/amanerp-second-opinion`.
+- Product page: `https://amanerp.com/developer-tools/second-opinion`.
+- Support page: `https://amanerp.com/developer-tools/second-opinion/support`.
+- Privacy notice: `https://amanerp.com/developer-tools/second-opinion/privacy`.
+- Terms: `https://amanerp.com/developer-tools/second-opinion/terms`.
+
+The repository organization name may remain `Aman-CERP`; the listing, manifest, public pages, and verified publisher identity must consistently explain that AmanERP publishes the project. The listing must not claim Anthropic sponsorship, endorsement, certification, or partnership.
+
+### 12.2 Data-flow disclosure
+
+The public pages and plugin documentation must state that:
+
+- the user selects the question, diff, metadata, and context sent to Anthropic;
+- the local runner invokes the user's separately installed Claude Code CLI under that user's Anthropic account and applicable Anthropic terms;
+- AmanERP does not proxy, receive, or store those prompts, diffs, credentials, or model responses;
+- reports and receipts remain on the user's workstation unless the user independently shares them;
+- the plugin sends no AmanERP telemetry and stores no credentials;
+- the built-in secret screen is a narrow safety guard, not a complete DLP product;
+- the plugin never posts a review, modifies code, or changes GitHub state.
+
+### 12.3 Submission bundle
+
+The repository must contain a maintainer-only `submission/` packet with:
+
+- final listing copy and URLs;
+- production logo/icon and representative screenshots;
+- starter prompts that match the installed skill names;
+- exactly five positive and three negative reviewer test cases with expected behavior and result shape;
+- setup and reproducibility instructions that require no AmanERP-private context;
+- policy attestations and an explicit list of facts that require human verification in the OpenAI portal;
+- release notes and a final readiness checklist.
+
+The distributable ZIP contains only the plugin tree. Submission materials outside that tree are not executable runtime content.
+
+### 12.4 Runtime and surface compatibility
+
+The listing identifies the plugin as local Codex software for macOS and Linux. It must not claim functionality in ChatGPT web, Codex cloud, mobile, or any environment that cannot execute the user's local Python, Claude Code, and optional GitHub CLI processes. Missing executables or authentication produce a clear preflight failure and must never silently downgrade to a hosted or shared credential path.
+
+### 12.5 Trademark posture
+
+The product, plugin, marketplace, skills, executable, artifacts, and active documentation use AmanERP-owned names. `Claude` and `Claude Code` appear only as truthful references to Anthropic's separately supplied dependency, data destination, command, or historical release provenance. Public copy includes a concise non-affiliation notice. Any broader mark or logo use requires written Anthropic approval.
+
+## 13. Compatibility
 
 Supported V1 environment:
 
 - macOS or Linux;
 - Python 3.11+;
 - Codex release supporting plugin marketplaces and plugin skills;
-- Claude Code 2.1.209+ for the exact tested isolation flags; 2.1.209 is the highest behavior-tested release for v0.1.0, and newer releases produce a compatibility warning;
+- Claude Code 2.1.209+ for the exact tested isolation flags; 2.1.209 is the highest behavior-tested release for v0.2.0, and newer releases produce a compatibility warning;
 - GitHub CLI 2.x only for `--pr` mode;
 - Git for local source metadata and packaging workflows.
 
 Windows native support is not claimed in V1. WSL may work but is unverified.
 
-## 13. Observability
+## 14. Observability
 
 Receipts include:
 
@@ -381,7 +445,7 @@ No telemetry is sent by the plugin itself.
 
 Input hashes prove that two retained inputs were identical; they do not preserve or recover the original content. Operators who require content-level auditability must retain the reviewed PR revision or their own approved source bundle separately.
 
-## 14. Acceptance criteria
+## 15. Acceptance criteria
 
 ### AC-1: Plugin validity
 
@@ -443,7 +507,35 @@ Before release, Claude reviews this specification/plan and the final release dif
 
 Public GitHub Actions validate manifests/skills, run the full test suite, perform static Python compilation, and verify deterministic packaging without requiring Claude or GitHub credentials.
 
-## 15. Release and support policy
+### AC-16: Neutral public identity
+
+The current manifest, marketplace, package root, executable name, skill names, artifact directory, active documentation, and release archive use the `amanerp-second-opinion` identity. Automated validation rejects the retired customer-facing product and package identifiers outside historical changelog/review material and migration notes.
+
+### AC-17: Publisher and legal metadata
+
+The plugin manifest identifies AmanERP as developer and includes HTTPS product, privacy, and terms URLs under `amanerp.com`, a support email, AmanERP brand assets, at most three starter prompts, and only paths that exist inside the plugin archive.
+
+### AC-18: Submission test packet
+
+Machine-readable validation proves that `submission/test-cases.json` contains exactly five positive and three negative cases; every case includes a unique identifier, prompt/scenario, reproducible fixture or prerequisite, expected workflow behavior, expected result shape or safe fallback, and the negative reason where applicable.
+
+### AC-19: Public disclosures
+
+The AmanERP website source contains the product, support, privacy, and terms routes from section 12.1. Link validation and a production Next.js build pass. The privacy notice names the direct Anthropic data flow and states that AmanERP receives no plugin inputs, credentials, or outputs.
+
+### AC-20: Reviewer reproducibility
+
+The submission guide documents a credential-free automated fixture path and a separately labeled optional live path using the reviewer's own Claude Code authentication. No demo credential, personal OAuth session, private network, AmanERP repository, or unpublished source is required for the automated path.
+
+### AC-21: Surface honesty
+
+Manifest copy, listing copy, README prerequisites, and reviewer guidance consistently describe the plugin as local Codex software for supported macOS/Linux environments. They do not claim support for ChatGPT web, Codex cloud, mobile, or Windows-native execution.
+
+### AC-22: Migration safety
+
+The README and changelog document removal of `claude-advisor@aman-cerp` before installation of `amanerp-second-opinion@amanerp`, explain that existing run artifacts are not automatically moved or deleted, and preserve GitHub's redirect from the former repository URL.
+
+## 16. Release and support policy
 
 - Semantic versioning.
 - Git tags and GitHub releases are immutable publication points.
@@ -452,7 +544,7 @@ Public GitHub Actions validate manifests/skills, run the full test suite, perfor
 - Security reports follow `SECURITY.md` and should not be filed publicly until coordinated disclosure is appropriate.
 - V1 is advisory software. Maintainers do not warrant review completeness or correctness.
 
-## 16. Deferred decisions
+## 17. Deferred decisions
 
 The following require new specifications, threat models, and terms review:
 

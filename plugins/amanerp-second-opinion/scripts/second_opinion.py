@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safety-first local orchestration for independent Claude advisory work."""
+"""Safety-first local orchestration for independent second-opinion work."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Literal, NoReturn
 
 
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 SCHEMA_VERSION = "1"
 MIN_PYTHON = (3, 11)
 MIN_CLAUDE = (2, 1, 209)
@@ -475,7 +475,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
             EXIT_DEPENDENCY, "Python 3.11 or newer is required", outcome="unavailable"
         )
 
-    claude = resolve_executable("CLAUDE_ADVISOR_CLAUDE_BIN", "claude")
+    claude = resolve_executable("AMANERP_SECOND_OPINION_CLAUDE_BIN", "claude")
     version_result = run_probe([claude, "--version"], child_kind="claude")
     if version_result.returncode != 0:
         raise AdvisorError(
@@ -564,7 +564,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
     }
 
     if require_gh:
-        gh = resolve_executable("CLAUDE_ADVISOR_GH_BIN", "gh")
+        gh = resolve_executable("AMANERP_SECOND_OPINION_GH_BIN", "gh")
         gh_version_result = run_probe([gh, "--version"], child_kind="github")
         if gh_version_result.returncode != 0:
             raise AdvisorError(
@@ -591,7 +591,7 @@ def ensure_regular_output_base(raw_path: str | None) -> Path:
     requested = (
         Path(raw_path).expanduser()
         if raw_path
-        else Path.cwd() / ".codex" / "claude-advisor" / "runs"
+        else Path.cwd() / ".codex" / "amanerp-second-opinion" / "runs"
     )
     if requested.exists() and requested.is_symlink():
         raise AdvisorError(
@@ -946,9 +946,9 @@ def validate_common_options(
 
 def assemble_untrusted_input(payload: dict[str, Any]) -> str:
     return (
-        "<<<CLAUDE_ADVISOR_UNTRUSTED_INPUT_V1>>>\n"
+        "<<<AMANERP_SECOND_OPINION_UNTRUSTED_INPUT_V1>>>\n"
         + json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-        + "\n<<<END_CLAUDE_ADVISOR_UNTRUSTED_INPUT_V1>>>\n"
+        + "\n<<<END_AMANERP_SECOND_OPINION_UNTRUSTED_INPUT_V1>>>\n"
     )
 
 
@@ -1739,7 +1739,7 @@ def add_common_analysis_options(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> SafeArgumentParser:
-    parser = SafeArgumentParser(prog="claude-advisor", description=__doc__)
+    parser = SafeArgumentParser(prog="amanerp-second-opinion", description=__doc__)
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {PLUGIN_VERSION}"
     )

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Independent PR Review"
+  short_description: "Adversarial second review of a PR or diff"
+  default_prompt: "Use $independent-pr-review to obtain an adversarial review of this pull request."
+
+policy:
+  allow_implicit_invocation: false

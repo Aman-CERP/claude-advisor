@@ -10,7 +10,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "plugins" / "claude-advisor" / "scripts" / "claude_advisor.py"
+RUNNER = ROOT / "plugins" / "amanerp-second-opinion" / "scripts" / "second_opinion.py"
 
 REQUIRED_FLAGS = [
     "--print",
@@ -91,7 +91,7 @@ from pathlib import Path
 
 args = sys.argv[1:]
 control = json.loads(
-    (Path(sys.argv[0]).resolve().parent / ".claude-advisor-test-control.json").read_text(
+    (Path(sys.argv[0]).resolve().parent / ".second-opinion-test-control.json").read_text(
         encoding="utf-8"
     )
 )
@@ -206,7 +206,7 @@ from pathlib import Path
 
 args = sys.argv[1:]
 control = json.loads(
-    (Path(sys.argv[0]).resolve().parent / ".claude-advisor-test-control.json").read_text(
+    (Path(sys.argv[0]).resolve().parent / ".second-opinion-test-control.json").read_text(
         encoding="utf-8"
     )
 )
@@ -286,8 +286,8 @@ def fake_environment(
     env = os.environ.copy()
     env.update(
         {
-            "CLAUDE_ADVISOR_CLAUDE_BIN": str(claude),
-            "CLAUDE_ADVISOR_GH_BIN": str(gh),
+            "AMANERP_SECOND_OPINION_CLAUDE_BIN": str(claude),
+            "AMANERP_SECOND_OPINION_GH_BIN": str(gh),
             "FAKE_CLAUDE_LOG": str(claude_log),
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_CLAUDE_RESULT": json.dumps(result or ADVISORY_RESULT),
@@ -307,8 +307,8 @@ def run_cli(
 ) -> subprocess.CompletedProcess[str]:
     control = {name: value for name, value in env.items() if name.startswith("FAKE_")}
     control_path = (
-        Path(env["CLAUDE_ADVISOR_CLAUDE_BIN"]).parent
-        / ".claude-advisor-test-control.json"
+        Path(env["AMANERP_SECOND_OPINION_CLAUDE_BIN"]).parent
+        / ".second-opinion-test-control.json"
     )
     control_path.write_text(json.dumps(control), encoding="utf-8")
     return subprocess.run(

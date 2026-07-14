@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <rect width="1600" height="1000" fill="#0A0B0D"/>
+  <rect x="68" y="54" width="1464" height="892" rx="28" fill="#111921" stroke="#1C2733" stroke-width="2"/>
+  <text x="124" y="128" fill="#C9A962" font-family="Manrope,Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="3">SECOND OPINION BY AMANERP</text>
+  <text x="124" y="205" fill="#FAF8F5" font-family="Georgia,serif" font-size="60" font-weight="700">Adversarial review without GitHub writes.</text>
+  <text x="124" y="254" fill="#8B9DB5" font-family="Manrope,Arial,sans-serif" font-size="25">Freeze the evidence. Challenge the diff. Reproduce every material finding.</text>
+
+  <rect x="124" y="326" width="458" height="338" rx="18" fill="#0D1117" stroke="#1F3040" stroke-width="2"/>
+  <text x="160" y="376" fill="#C9A962" font-family="Manrope,Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">EVIDENCE SNAPSHOT</text>
+  <text x="160" y="426" fill="#FAF8F5" font-family="Manrope,Arial,sans-serif" font-size="26" font-weight="700">owner/repository · PR 123</text>
+  <text x="160" y="476" fill="#8B9DB5" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18">base  725d9e1…</text>
+  <text x="160" y="512" fill="#8B9DB5" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18">head  a41c77b…</text>
+  <text x="160" y="548" fill="#8B9DB5" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18">diff  sha256:b93f…</text>
+  <line x1="160" y1="580" x2="546" y2="580" stroke="#1C2733" stroke-width="2"/>
+  <circle cx="175" cy="620" r="10" fill="#0D9B7A"/>
+  <text x="200" y="627" fill="#C8D3E1" font-family="Manrope,Arial,sans-serif" font-size="19">Head and base rechecked after capture</text>
+
+  <path d="M610 495 H675" stroke="#C9A962" stroke-width="4"/>
+  <path d="M665 483 L679 495 L665 507" fill="none" stroke="#C9A962" stroke-width="4"/>
+
+  <rect x="700" y="326" width="776" height="338" rx="18" fill="#FAF8F4"/>
+  <text x="738" y="376" fill="#0A7D5F" font-family="Manrope,Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">PRIORITIZED REVIEW</text>
+  <rect x="738" y="410" width="700" height="68" rx="12" fill="#FFFFFF" stroke="#E7E1D6"/>
+  <rect x="758" y="430" width="46" height="28" rx="6" fill="#FBE3E3"/>
+  <text x="771" y="450" fill="#A11C1C" font-family="Manrope,Arial,sans-serif" font-size="15" font-weight="800">HIGH</text>
+  <text x="825" y="451" fill="#181A1F" font-family="Manrope,Arial,sans-serif" font-size="20" font-weight="700">Concrete failure path with file and line evidence</text>
+  <rect x="738" y="494" width="700" height="68" rx="12" fill="#FFFFFF" stroke="#E7E1D6"/>
+  <rect x="758" y="514" width="69" height="28" rx="6" fill="#F7ECD1"/>
+  <text x="770" y="534" fill="#74540F" font-family="Manrope,Arial,sans-serif" font-size="15" font-weight="800">MEDIUM</text>
+  <text x="846" y="535" fill="#181A1F" font-family="Manrope,Arial,sans-serif" font-size="20" font-weight="700">Risk, trigger, impact, and smallest safe fix</text>
+  <rect x="738" y="578" width="700" height="56" rx="12" fill="#DCEFE5"/>
+  <text x="766" y="613" fill="#086348" font-family="Manrope,Arial,sans-serif" font-size="19" font-weight="700">Codex verifies the evidence before accepting the opinion.</text>
+
+  <line x1="124" y1="730" x2="1476" y2="730" stroke="#1C2733" stroke-width="2"/>
+  <text x="124" y="788" fill="#FAF8F5" font-family="Manrope,Arial,sans-serif" font-size="22" font-weight="700">Read-only means read-only</text>
+  <text x="124" y="832" fill="#8B9DB5" font-family="Manrope,Arial,sans-serif" font-size="20">No comments · No approvals · No labels · No merge · No push · No working-tree edits</text>
+  <rect x="124" y="870" width="1352" height="44" rx="12" fill="#064E3B"/>
+  <text x="800" y="899" fill="#C4F3E3" text-anchor="middle" font-family="Manrope,Arial,sans-serif" font-size="17" font-weight="700">YOUR CREDENTIALS · YOUR WORKSTATION · YOUR LOCAL RECEIPT</text>
+</svg>

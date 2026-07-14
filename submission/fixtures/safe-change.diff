@@ -1,0 +1,11 @@
+diff --git a/example/checkout.py b/example/checkout.py
+index 1111111..2222222 100644
+--- a/example/checkout.py
++++ b/example/checkout.py
+@@ -1,4 +1,7 @@
+ def checkout(cart, gateway):
+-    return gateway.charge(cart.total)
++    result = gateway.charge(cart.total)
++    if not result.ok:
++        return {"ok": True, "transaction_id": None}
++    return {"ok": True, "transaction_id": result.transaction_id}

@@ -1,4 +1,57 @@
-# Claude Advisor v0.1.0 — Implementation Plan
+# Second Opinion by AmanERP v0.2.0 — Publication Hardening Plan
+
+Status: In progress
+Date: 2026-07-14
+Owner: AmanERP maintainers
+
+## V0.2 execution sequence
+
+This release preserves the v0.1 runtime trust boundary while replacing the public identity and completing the OpenAI Plugin Directory submission packet.
+
+### Phase A — contract and migration tests
+
+1. Amend `docs/specification.md` with the publisher, trademark, legal, surface, and submission contracts.
+2. Update project, packaging, and runner tests to require the `amanerp-second-opinion` package, `independent-*` skills, AmanERP marketplace identity, public legal URLs, assets, and five-positive/three-negative submission packet.
+3. Run the changed tests before production edits and retain their expected failure as the red phase.
+
+### Phase B — neutral product identity
+
+1. Rename the plugin folder to `plugins/amanerp-second-opinion`.
+2. Rename the runner to `scripts/second_opinion.py` while preserving command and exit-code behavior.
+3. Rename the two skills to `independent-advisory` and `independent-pr-review` and regenerate their `agents/openai.yaml` metadata.
+4. Rename the marketplace to `amanerp`, set the publisher to AmanERP, and update active documentation and packaging paths.
+5. Preserve v0.1 changelog and review records as explicitly historical provenance.
+
+### Phase C — publication materials
+
+1. Add AmanERP-owned icon, logo, and representative PNG screenshots to the plugin assets.
+2. Complete the rich manifest with product, support, privacy, terms, brand color, asset paths, capabilities, and starter prompts.
+3. Add `submission/listing.json`, `test-cases.json`, reviewer guide, release notes, policy attestations, and final checklist.
+4. Add deterministic repository validation for submission counts, fields, public URLs, asset existence, retired active identifiers, and archive isolation.
+
+### Phase D — AmanERP public pages
+
+1. Add the English-first `/developer-tools/second-opinion` product page using the existing AmanERP design system and a truthful local data-flow visual.
+2. Add dedicated support, privacy, and terms pages under the same path.
+3. Keep untranslated French surfaces unavailable and legal pages noindex; do not fabricate jurisdiction-specific claims.
+4. Run link, locale, lint, build, and visual checks.
+
+### Phase E — verification and publication PRs
+
+1. Run `make check`, `make package`, `make package-repro-check`, official plugin validation, and both skill validators.
+2. Install the renamed marketplace/plugin locally using the documented cache-safe flow and run doctor plus a synthetic supplied-diff smoke.
+3. Open focused PRs in the plugin and website repositories.
+4. Dogfood `independent-pr-review` against the plugin PR, disposition every high/medium finding, and rerun after material changes.
+5. Leave OpenAI business verification, portal attestations, final submit, website deploy, and Anthropic trademark permission as named human-controlled publication gates.
+
+## V0.2 rollback
+
+- GitHub redirects the former repository URL after the neutral repository rename.
+- The retired marketplace/plugin remains removable by its former identifiers; it is not silently overwritten.
+- Existing `.codex/claude-advisor/` artifacts remain untouched and are not migrated automatically.
+- Reverting this release restores the v0.1 package without changing Claude or GitHub credentials.
+
+## V0.1 implementation record
 
 Status: Ready for independent review  
 Date: 2026-07-14  
