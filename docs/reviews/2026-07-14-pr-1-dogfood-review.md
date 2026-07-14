@@ -84,6 +84,39 @@ Evidence: child environments are now constructed from an explicit allowlist cove
 
 This deliberately makes custom endpoints and Bedrock, Vertex, Foundry, and Mantle modes V1 non-goals. That is a more honest and testable privacy boundary than claiming independence while forwarding arbitrary provider configuration.
 
+## Fourth review
+
+- Reviewed head: `317b240c93d0aee44726d01f9deac481339681bc`
+- Diff SHA-256: `67225f12121d73802b96fb6b8b082b2ebd848c6c8d0b645301dca92e5e342ff7`
+- Verdict: `comment`, medium confidence
+- Claude usage: three turns, USD 1.3861135 reported
+
+Claude found no critical/high defect, one medium reliability issue, and three low defense-in-depth issues. Codex reproduced all four against the reviewed source.
+
+### Fourth CA-01 — Five-second hidden-control probe timeout
+
+Disposition: **accepted and fixed**.
+
+Evidence: every dependency probe now uses the named `PROBE_TIMEOUT_SECONDS = 20` default, including `claude --max-turns 1 --version`. A slow cold start can no longer be uniquely penalized by the mandatory hidden-control check.
+
+### Fourth CA-02 — Shared credential environment
+
+Disposition: **accepted and fixed**.
+
+Evidence: base process variables and credentials are separate allowlists. Claude processes receive only first-party Anthropic credentials; GitHub processes receive only GitHub credentials/configuration. Fake-child tests assert both directions: Claude cannot see `GITHUB_TOKEN`, and `gh` cannot see `ANTHROPIC_API_KEY`.
+
+### Fourth CA-03 — Direct-child-only termination
+
+Disposition: **accepted and fixed**.
+
+Evidence: every child starts in a new POSIX session. Failure cleanup signals the full process group with `SIGKILL`, falls back safely to direct-child kill, and waits for the direct child. An integration regression starts a grandchild that would write a marker after the parent timeout; the marker remains absent after group termination.
+
+### Fourth CA-04 — Mid-stream read errors looked like startup failures
+
+Disposition: **accepted and fixed**.
+
+Evidence: the bounded-process primitive now reports `io_error` once process creation succeeded. Doctor, Claude analysis, and GitHub reads map that reason to explicit I/O diagnostics instead of a false startup failure. A regression injects an `os.read` failure after child output becomes readable and verifies the `io_error` classification.
+
 ## Agreement status
 
-Pending a final installed-plugin review after the third-review hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.
+Pending a final installed-plugin review after the fourth-review hardening commit. Agreement requires no unresolved critical/high finding and explicit disposition of any new material finding.

@@ -5,7 +5,9 @@ import importlib.util
 import json
 import os
 import stat
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -127,6 +129,7 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(
                 analysis["env"]["ANTHROPIC_API_KEY"], "preserve-this-auth-value"
             )
+            self.assertIsNone(analysis["env"]["GITHUB_TOKEN"])
             self.assertIsNone(analysis["env"]["ANTHROPIC_BASE_URL"])
             self.assertIsNone(analysis["env"]["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"])
             self.assertIsNone(analysis["env"]["CLAUDE_CONFIG_DIR"])
@@ -523,11 +526,13 @@ class PullRequestTests(unittest.TestCase):
                 receipt["source"]["diff_sha256"],
                 hashlib.sha256(expected_diff.encode()).hexdigest(),
             )
-            view_calls = [
-                item
-                for item in read_jsonl(gh_log)
-                if item["args"][:2] == ["pr", "view"]
-            ]
+            calls = read_jsonl(gh_log)
+            for call in calls:
+                self.assertIsNone(call["env"]["ANTHROPIC_API_KEY"])
+                self.assertEqual(
+                    call["env"]["GITHUB_TOKEN"], "preserve-this-github-value"
+                )
+            view_calls = [item for item in calls if item["args"][:2] == ["pr", "view"]]
             self.assertEqual(len(view_calls), 2)
 
     def test_pr_review_aborts_when_base_or_head_changes_during_capture(self) -> None:
@@ -616,6 +621,67 @@ class PullRequestTests(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(completed.returncode, 2)
+
+
+class BoundedProcessTests(unittest.TestCase):
+    @staticmethod
+    def load_runner():
+        spec = importlib.util.spec_from_file_location(
+            "claude_advisor_runner_process_tests", RUNNER
+        )
+        if spec is None or spec.loader is None:
+            raise AssertionError("runner module could not be loaded")
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        return runner
+
+    def test_timeout_kills_the_child_process_group(self) -> None:
+        runner = self.load_runner()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            marker = root / "grandchild-survived"
+            child = root / "spawn-grandchild.py"
+            child.write_text(
+                "import pathlib, subprocess, sys, time\n"
+                f"marker = {str(marker)!r}\n"
+                "subprocess.Popen([sys.executable, '-c', "
+                'f"import pathlib, time; time.sleep(1.5); '
+                "pathlib.Path({marker!r}).write_text('survived')\"])\n"
+                "time.sleep(30)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(runner.BoundedProcessError) as captured:
+                runner.run_bounded_process(
+                    [sys.executable, str(child)],
+                    child_kind="claude",
+                    input_bytes=None,
+                    timeout=1,
+                    max_stdout_bytes=1024,
+                    max_stderr_bytes=1024,
+                )
+            self.assertEqual(captured.exception.reason, "timeout")
+            time.sleep(1)
+            self.assertFalse(marker.exists())
+
+    def test_midstream_read_error_is_not_classified_as_start_failure(self) -> None:
+        runner = self.load_runner()
+        with mock.patch.object(
+            runner, "read_process_chunk", side_effect=OSError("pipe failed")
+        ):
+            with self.assertRaises(runner.BoundedProcessError) as captured:
+                runner.run_bounded_process(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import time; print('x', flush=True); time.sleep(30)",
+                    ],
+                    child_kind="claude",
+                    input_bytes=None,
+                    timeout=2,
+                    max_stdout_bytes=1024,
+                    max_stderr_bytes=1024,
+                )
+        self.assertEqual(captured.exception.reason, "io_error")
 
 
 if __name__ == "__main__":

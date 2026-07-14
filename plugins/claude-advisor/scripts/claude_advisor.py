@@ -12,6 +12,7 @@ import re
 import selectors
 import secrets
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -19,7 +20,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn
 
 
 PLUGIN_VERSION = "0.1.0"
@@ -34,6 +35,7 @@ MAX_STDOUT_BYTES = 16 * 1024 * 1024
 MAX_GH_METADATA_BYTES = 1024 * 1024
 MAX_PROBE_STDOUT_BYTES = 1024 * 1024
 MAX_CHILD_STDERR_BYTES = 1024 * 1024
+PROBE_TIMEOUT_SECONDS = 20
 
 EXIT_USAGE = 2
 EXIT_DEPENDENCY = 3
@@ -60,22 +62,11 @@ REQUIRED_HELP_FLAGS = (
     "--effort",
 )
 
-CHILD_ENV_ALLOWLIST = frozenset(
+BASE_CHILD_ENV_ALLOWLIST = frozenset(
     {
         "ALL_PROXY",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN",
         "COLORTERM",
         "CURL_CA_BUNDLE",
-        "GCM_INTERACTIVE",
-        "GH_CONFIG_DIR",
-        "GH_ENTERPRISE_TOKEN",
-        "GH_HOST",
-        "GH_PROMPT_DISABLED",
-        "GH_TOKEN",
-        "GITHUB_ENTERPRISE_TOKEN",
-        "GITHUB_TOKEN",
         "HOME",
         "HTTPS_PROXY",
         "HTTP_PROXY",
@@ -104,6 +95,22 @@ CHILD_ENV_ALLOWLIST = frozenset(
         "no_proxy",
     }
 )
+CLAUDE_CHILD_ENV_ALLOWLIST = frozenset(
+    {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
+)
+GITHUB_CHILD_ENV_ALLOWLIST = frozenset(
+    {
+        "GCM_INTERACTIVE",
+        "GH_CONFIG_DIR",
+        "GH_ENTERPRISE_TOKEN",
+        "GH_HOST",
+        "GH_PROMPT_DISABLED",
+        "GH_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+        "GITHUB_TOKEN",
+    }
+)
+ChildKind = Literal["claude", "github"]
 
 SUPPORTED_SCHEMA_KEYS = {
     "type",
@@ -255,18 +262,40 @@ def redact(text: str | bytes | None) -> tuple[str, int]:
     return value, count
 
 
-def child_environment() -> dict[str, str]:
-    env = {
-        name: value for name, value in os.environ.items() if name in CHILD_ENV_ALLOWLIST
-    }
-    env["GH_PROMPT_DISABLED"] = "1"
-    env["GCM_INTERACTIVE"] = "Never"
+def child_environment(child_kind: ChildKind) -> dict[str, str]:
+    credential_allowlist = (
+        CLAUDE_CHILD_ENV_ALLOWLIST
+        if child_kind == "claude"
+        else GITHUB_CHILD_ENV_ALLOWLIST
+    )
+    allowlist = BASE_CHILD_ENV_ALLOWLIST | credential_allowlist
+    env = {name: value for name, value in os.environ.items() if name in allowlist}
+    if child_kind == "github":
+        env["GH_PROMPT_DISABLED"] = "1"
+        env["GCM_INTERACTIVE"] = "Never"
     return env
+
+
+def kill_process_group(process: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        if process.poll() is None:
+            process.kill()
+    if process.poll() is None:
+        process.wait()
+
+
+def read_process_chunk(file_descriptor: int) -> bytes:
+    return os.read(file_descriptor, 65536)
 
 
 def run_bounded_process(
     command: list[str],
     *,
+    child_kind: ChildKind,
     input_bytes: bytes | None,
     timeout: int,
     max_stdout_bytes: int,
@@ -291,7 +320,8 @@ def run_bounded_process(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=False,
-            env=child_environment(),
+            env=child_environment(child_kind),
+            start_new_session=True,
         )
         if process.stdout is None or process.stderr is None:
             raise BoundedProcessError("start_failed")
@@ -313,7 +343,7 @@ def run_bounded_process(
                 )
             for key, _ in selector.select(timeout=min(remaining, 0.25)):
                 target, limit, stream_name = key.data
-                chunk = os.read(key.fileobj.fileno(), 65536)
+                chunk = read_process_chunk(key.fileobj.fileno())
                 if not chunk:
                     selector.unregister(key.fileobj)
                     continue
@@ -328,23 +358,21 @@ def run_bounded_process(
         return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
         return return_code, bytes(stdout), bytes(stderr)
     except BoundedProcessError:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait()
+        if process is not None:
+            kill_process_group(process)
         raise
     except subprocess.TimeoutExpired as exc:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait()
+        if process is not None:
+            kill_process_group(process)
         raise BoundedProcessError(
             "timeout", stdout=bytes(stdout), stderr=bytes(stderr)
         ) from exc
     except OSError as exc:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait()
+        reason = "io_error" if process is not None else "start_failed"
+        if process is not None:
+            kill_process_group(process)
         raise BoundedProcessError(
-            "start_failed", stdout=bytes(stdout), stderr=bytes(stderr)
+            reason, stdout=bytes(stdout), stderr=bytes(stderr)
         ) from exc
     finally:
         selector.close()
@@ -387,11 +415,15 @@ def resolve_executable(env_name: str, fallback: str) -> str:
 
 
 def run_probe(
-    command: list[str], *, timeout: int = 20
+    command: list[str],
+    *,
+    child_kind: ChildKind,
+    timeout: int = PROBE_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
     try:
         return_code, stdout, stderr = run_bounded_process(
             command,
+            child_kind=child_kind,
             input_bytes=None,
             timeout=timeout,
             max_stdout_bytes=MAX_PROBE_STDOUT_BYTES,
@@ -402,6 +434,8 @@ def run_probe(
             message = "dependency probe timed out"
         elif exc.reason == "limit":
             message = f"dependency probe {exc.stream_name} exceeded the byte limit"
+        elif exc.reason == "io_error":
+            message = "dependency probe I/O failed"
         else:
             message = "dependency probe could not start"
         raise AdvisorError(EXIT_DEPENDENCY, message, outcome="unavailable") from exc
@@ -441,7 +475,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
         )
 
     claude = resolve_executable("CLAUDE_ADVISOR_CLAUDE_BIN", "claude")
-    version_result = run_probe([claude, "--version"])
+    version_result = run_probe([claude, "--version"], child_kind="claude")
     if version_result.returncode != 0:
         raise AdvisorError(
             EXIT_DEPENDENCY, "Claude version probe failed", outcome="unavailable"
@@ -454,7 +488,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
             outcome="unavailable",
         )
 
-    help_result = run_probe([claude, "--help"])
+    help_result = run_probe([claude, "--help"], child_kind="claude")
     if help_result.returncode != 0:
         raise AdvisorError(
             EXIT_DEPENDENCY, "Claude help probe failed", outcome="unavailable"
@@ -471,7 +505,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
 
     turn_result = run_probe(
         [claude, "--max-turns", "1", "--version"],
-        timeout=5,
+        child_kind="claude",
     )
     if turn_result.returncode != 0:
         raise AdvisorError(
@@ -487,7 +521,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
             outcome="unavailable",
         )
 
-    auth_result = run_probe([claude, "auth", "status", "--json"])
+    auth_result = run_probe([claude, "auth", "status", "--json"], child_kind="claude")
     try:
         auth_payload = (
             json.loads(auth_result.stdout) if auth_result.stdout.strip() else {}
@@ -530,7 +564,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
 
     if require_gh:
         gh = resolve_executable("CLAUDE_ADVISOR_GH_BIN", "gh")
-        gh_version_result = run_probe([gh, "--version"])
+        gh_version_result = run_probe([gh, "--version"], child_kind="github")
         if gh_version_result.returncode != 0:
             raise AdvisorError(
                 EXIT_DEPENDENCY,
@@ -538,7 +572,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
                 outcome="unavailable",
             )
         gh_version = parse_version(gh_version_result.stdout, "GitHub CLI")
-        gh_auth = run_probe([gh, "auth", "status"])
+        gh_auth = run_probe([gh, "auth", "status"], child_kind="github")
         if gh_auth.returncode != 0:
             raise AdvisorError(
                 EXIT_AUTH, "GitHub CLI is not authenticated", outcome="unavailable"
@@ -1170,6 +1204,7 @@ def execute_claude(
         try:
             claude_exit_code, claude_stdout, claude_stderr = run_bounded_process(
                 command,
+                child_kind="claude",
                 input_bytes=untrusted_input.encode("utf-8"),
                 timeout=limits["timeout"],
                 max_stdout_bytes=MAX_STDOUT_BYTES,
@@ -1197,6 +1232,13 @@ def execute_claude(
                 raise AdvisorError(
                     EXIT_CLAUDE,
                     "Claude analysis could not start",
+                    outcome="claude_failed",
+                    stderr_text=timeout_stderr,
+                ) from exc
+            if exc.reason == "io_error":
+                raise AdvisorError(
+                    EXIT_CLAUDE,
+                    "Claude analysis I/O failed",
                     outcome="claude_failed",
                     stderr_text=timeout_stderr,
                 ) from exc
@@ -1431,6 +1473,7 @@ def gh_command(
     try:
         return_code, stdout, _ = run_bounded_process(
             [gh, *arguments],
+            child_kind="github",
             input_bytes=None,
             timeout=60,
             max_stdout_bytes=max_stdout_bytes,
@@ -1446,6 +1489,10 @@ def gh_command(
                 EXIT_GITHUB,
                 f"GitHub {exc.stream_name} exceeded the byte limit",
                 outcome="github_failed",
+            ) from exc
+        if exc.reason == "io_error":
+            raise AdvisorError(
+                EXIT_GITHUB, "GitHub process I/O failed", outcome="github_failed"
             ) from exc
         raise AdvisorError(
             EXIT_GITHUB, "GitHub read failed", outcome="github_failed"

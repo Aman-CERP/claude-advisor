@@ -102,6 +102,7 @@ if log:
             "args": args,
             "env": {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+                "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
                 "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL"),
                 "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": os.environ.get(
                     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
@@ -212,7 +213,13 @@ if log and os.path.exists(log):
         prior = [json.loads(line) for line in handle if line.strip()]
 if log:
     with open(log, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"args": args}) + "\n")
+        handle.write(json.dumps({
+            "args": args,
+            "env": {
+                "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+                "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
+            },
+        }) + "\n")
 
 if args == ["--version"]:
     print("gh version 2.92.0 (fake)")
@@ -281,6 +288,7 @@ def fake_environment(
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_CLAUDE_RESULT": json.dumps(result or ADVISORY_RESULT),
             "ANTHROPIC_API_KEY": "preserve-this-auth-value",
+            "GITHUB_TOKEN": "preserve-this-github-value",
             "ANTHROPIC_BASE_URL": "https://must-not-reach-child.invalid",
             "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "must-not-reach-child",
             "CLAUDE_CONFIG_DIR": "/must/not/reach/child",

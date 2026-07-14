@@ -106,7 +106,7 @@ Selected questions, diffs, metadata, and context files are sent to Anthropic thr
 
 The runner uses `--safe-mode`, an empty tool list, `--no-chrome`, and `--no-session-persistence`. It screens likely secret-bearing paths and high-confidence credential patterns, but this is not a complete DLP system. Review context before sending it. An explicit `--allow-sensitive-input` override is recorded in the receipt.
 
-The child receives a minimal allowlisted environment. Stored subscription OAuth, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN` are supported; endpoint overrides, cloud-provider modes, and unknown Claude configuration variables are removed. Standard certificate and HTTP proxy variables are retained for normal network compatibility.
+Each child receives a minimal purpose-specific environment: Claude receives only Anthropic credentials, while `gh` receives only GitHub credentials. Stored subscription OAuth, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN` are supported; endpoint overrides, cloud-provider modes, and unknown Claude configuration variables are removed. Standard certificate and HTTP proxy variables are retained for normal network compatibility. Failed or over-limit children are terminated as a POSIX process group so descendants cannot outlive the run.
 
 Do not use personal Claude OAuth as a backend for other users. This project is a local tool: every operator authenticates their own CLI. A future hosted service would require a separate API-based architecture, terms review, threat model, and specification.
 
