@@ -1,6 +1,6 @@
 # Second Opinion by AmanERP v0.2.0 — Publication Hardening Plan
 
-Status: In progress
+Status: Implemented; human-controlled publication gates remain
 Date: 2026-07-14
 Owner: AmanERP maintainers
 

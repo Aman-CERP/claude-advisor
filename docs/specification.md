@@ -1,6 +1,6 @@
 # Second Opinion by AmanERP v0.2.0 — Product and Engineering Specification
 
-Status: Approved for implementation  
+Status: Implemented; release and directory publication gates remain
 Date: 2026-07-14  
 Last amended: 2026-07-14
 Owner: AmanERP maintainers
