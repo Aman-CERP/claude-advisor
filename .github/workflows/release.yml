@@ -39,6 +39,10 @@ jobs:
           make package
           make package-repro-check
 
+      - name: Verify release checksum
+        working-directory: dist
+        run: sha256sum --check amanerp-second-opinion-*.zip.sha256
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
