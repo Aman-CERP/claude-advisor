@@ -294,7 +294,13 @@ def validate_submission() -> None:
 
 
 def validate_public_identity() -> None:
-    retired = ("claude-advisor", "claude_advisor.py", "$claude-advisory")
+    retired = (
+        "claude-advisor",
+        "claude_advisor.py",
+        "claude-advisory",
+        "claude-pr-review",
+        "aman-cerp",
+    )
     active_files = (
         ROOT / ".agents" / "plugins" / "marketplace.json",
         ROOT / "pyproject.toml",
