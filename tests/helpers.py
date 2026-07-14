@@ -113,6 +113,13 @@ if args == ["--help"]:
     print("\n".join(flag for flag in flags if flag != missing))
     raise SystemExit(0)
 
+if args == ["--max-turns", "1", "--claude-advisor-unknown-probe"]:
+    if os.environ.get("FAKE_CLAUDE_MAX_TURNS", "present") == "present":
+        print("error: unknown option '--claude-advisor-unknown-probe'", file=sys.stderr)
+    else:
+        print("error: unknown option '--max-turns'", file=sys.stderr)
+    raise SystemExit(1)
+
 if args == ["auth", "status", "--json"]:
     if os.environ.get("FAKE_CLAUDE_AUTH", "ok") != "ok":
         print(json.dumps({"loggedIn": False, "email": "private@example.invalid"}))
@@ -189,6 +196,10 @@ if args == ["--version"]:
 if args == ["auth", "status"]:
     raise SystemExit(0 if os.environ.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
 if args[:2] == ["pr", "diff"]:
+    forced_size = int(os.environ.get("FAKE_GH_DIFF_BYTES", "0"))
+    if forced_size:
+        sys.stdout.write("x" * forced_size)
+        raise SystemExit(0)
     print("diff --git a/src/example.py b/src/example.py")
     print("--- a/src/example.py")
     print("+++ b/src/example.py")

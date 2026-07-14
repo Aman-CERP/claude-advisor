@@ -60,6 +60,15 @@ class DoctorTests(unittest.TestCase):
                 "private@example.invalid", completed.stdout + completed.stderr
             )
 
+    def test_doctor_fails_when_hidden_max_turns_parser_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MAX_TURNS"] = "missing"
+            completed = run_cli(["doctor"], cwd=root, env=env)
+            self.assertEqual(completed.returncode, 3)
+            self.assertIn("--max-turns", completed.stderr)
+
 
 class AdvisoryTests(unittest.TestCase):
     def test_advisory_is_isolated_and_writes_owner_only_artifacts(self) -> None:
@@ -531,6 +540,27 @@ class PullRequestTests(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(completed.returncode, 7, completed.stderr)
+
+    def test_pr_review_bounds_github_diff_before_assembly(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root, PR_RESULT)
+            env["FAKE_GH_DIFF_BYTES"] = str(6 * 1024 * 1024 + 1)
+            completed = run_cli(
+                [
+                    "pr-review",
+                    "--pr",
+                    "42",
+                    "--repo",
+                    "example/project",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 8, completed.stderr)
+            self.assertIn("byte limit", completed.stderr)
 
     def test_supplied_diff_rejects_sensitive_path(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

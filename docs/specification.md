@@ -120,7 +120,7 @@ Research was refreshed on 2026-07-14 against official documentation and live loc
 - OpenAI documents skills as instruction bundles with `SKILL.md`; plugin-owned skills can opt out of implicit invocation.
 - Anthropic documents `claude -p` for non-interactive execution, `--output-format json`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
 - The locally tested Claude CLI is `2.1.209`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
-- Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. The flag remains mandatory on analysis calls but is version-gated by the live-tested baseline rather than by help-text discovery.
+- Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. Doctor verifies parser recognition without an API call by placing `--max-turns 1` before a deliberate sentinel unknown option and requiring the sentinel—not `--max-turns`—to be identified as unknown.
 - The exact authentication probe `claude auth status --json` was live-verified on 2.1.209. Exit 0 plus JSON boolean `loggedIn: true` is success. The command also returns identity and organization fields; the plugin must neither print nor persist those fields.
 - GitHub CLI `2.92.0` was live-verified. `gh pr view --json baseRefOid,headRefOid,...` returned both object IDs against a live GitHub PR.
 - Anthropic documents that Pro and Max subscriptions can authenticate Claude Code and that Claude/Claude Code usage shares plan limits. API Console billing is separate. The plugin must not claim that a run is free or that a spend cap guarantees subscription availability.
@@ -151,7 +151,8 @@ The runner provides `doctor` and verifies:
 - Claude authentication status succeeds;
 - GitHub CLI resolution and authentication when requested;
 - all advertised mandatory flags are present in `claude --help`: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`;
-- the installed version is at least the version on which the hidden-but-accepted `--max-turns` behavior was live-tested.
+- the installed version is at least the version on which the hidden-but-accepted `--max-turns` behavior was live-tested;
+- a no-API parser sentinel confirms that the installed CLI still recognizes `--max-turns`.
 
 Doctor fails closed when a mandatory flag is missing. It warns, but does not fail, when Claude is newer than the highest behavior-tested version, because flag presence does not prove unchanged semantics. Authentication output is reduced to non-identifying status fields before display or persistence.
 
@@ -179,7 +180,7 @@ GitHub mode uses argument-safe, read-only commands:
 - `gh pr view` for repository, number, title, URL, author, base branch, head branch, base object ID, head object ID, additions, deletions, and changed-file count;
 - `gh pr diff` for unified diff content.
 
-The runner reads `baseRefOid` and `headRefOid` before and after `gh pr diff` and aborts with exit 8 if either changed. The exact diff is hashed with SHA-256 and recorded. The receipt labels the content as the unified diff returned by GitHub's PR-diff endpoint; it does not claim that the content equals a local two-dot object range.
+GitHub stdout and stderr are read incrementally with byte ceilings; an oversized diff is terminated and rejected before assembly. The runner reads `baseRefOid` and `headRefOid` before and after `gh pr diff` and aborts with exit 8 if either changed. The exact diff is hashed with SHA-256 and recorded. The receipt labels the content as the unified diff returned by GitHub's PR-diff endpoint; it does not claim that the content equals a local two-dot object range.
 
 ### FR-5: Structured outcomes
 
@@ -393,7 +394,7 @@ Tests use hostile question, file, repository, and PR strings and prove they rema
 
 ### AC-5: Doctor outcomes
 
-Tests cover success, missing Claude, incompatible Claude, each mandatory flag missing in turn, newer-than-tested warning, unauthenticated Claude, sanitized auth status, and optional/missing GitHub CLI.
+Tests cover success, missing Claude, incompatible Claude, each advertised mandatory flag missing in turn, hidden `--max-turns` parser recognition, newer-than-tested warning, unauthenticated Claude, sanitized auth status, and optional/missing GitHub CLI.
 
 ### AC-6: Advisory outcomes
 
@@ -401,7 +402,7 @@ Tests cover valid structured output, non-zero Claude exit, timeout, malformed en
 
 ### AC-7: PR snapshot integrity
 
-Tests prove PR mode records owner/repository, PR number, base/head object IDs, and the SHA-256 of the exact reviewed diff. Separate tests change `baseRefOid` and `headRefOid` between the pre- and post-diff reads and require an exit-8 abort without a review result.
+Tests prove PR mode records owner/repository, PR number, base/head object IDs, and the SHA-256 of the exact reviewed diff. Separate tests bound GitHub diff output and change `baseRefOid` and `headRefOid` between the pre- and post-diff reads, requiring an exit-8 abort without a review result.
 
 ### AC-8: Sensitive-input fail-closed behavior
 

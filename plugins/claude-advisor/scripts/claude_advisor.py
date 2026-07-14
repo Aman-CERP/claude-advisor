@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import selectors
 import secrets
 import shutil
 import stat
@@ -30,6 +31,8 @@ MAX_SINGLE_FILE_BYTES = 6 * 1024 * 1024
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 MAX_CONTEXT_FILES = 32
 MAX_STDOUT_BYTES = 16 * 1024 * 1024
+MAX_GH_METADATA_BYTES = 1024 * 1024
+MAX_GH_STDERR_BYTES = 1024 * 1024
 
 EXIT_USAGE = 2
 EXIT_DEPENDENCY = 3
@@ -304,6 +307,15 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
         raise AdvisorError(
             EXIT_DEPENDENCY,
             "Claude is missing required flag(s): " + ", ".join(missing_flags),
+            outcome="unavailable",
+        )
+
+    hidden_turn_probe = "--claude-advisor-unknown-probe"
+    turn_result = run_probe([claude, "--max-turns", "1", hidden_turn_probe])
+    if turn_result.returncode == 0 or hidden_turn_probe not in turn_result.stderr:
+        raise AdvisorError(
+            EXIT_DEPENDENCY,
+            "Claude does not recognize the required hidden --max-turns control",
             outcome="unavailable",
         )
 
@@ -1229,24 +1241,83 @@ PR_FIELDS = (
 )
 
 
-def gh_command(gh: str, arguments: list[str]) -> str:
+def gh_command(
+    gh: str, arguments: list[str], *, max_stdout_bytes: int = MAX_GH_METADATA_BYTES
+) -> str:
+    process: subprocess.Popen[bytes] | None = None
+    selector = selectors.DefaultSelector()
+    stdout = bytearray()
+    stderr = bytearray()
+    deadline = time.monotonic() + 60
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             [gh, *arguments],
-            text=True,
-            capture_output=True,
-            timeout=60,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             shell=False,
             env=child_environment(),
         )
+        if process.stdout is None or process.stderr is None:
+            raise AdvisorError(
+                EXIT_GITHUB, "GitHub read failed", outcome="github_failed"
+            )
+        selector.register(
+            process.stdout,
+            selectors.EVENT_READ,
+            (stdout, max_stdout_bytes, "stdout"),
+        )
+        selector.register(
+            process.stderr,
+            selectors.EVENT_READ,
+            (stderr, MAX_GH_STDERR_BYTES, "stderr"),
+        )
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AdvisorError(
+                    EXIT_GITHUB, "GitHub read timed out", outcome="github_failed"
+                )
+            for key, _ in selector.select(timeout=min(remaining, 0.25)):
+                target, limit, stream_name = key.data
+                chunk = os.read(key.fileobj.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                target.extend(chunk)
+                if len(target) > limit:
+                    raise AdvisorError(
+                        EXIT_GITHUB,
+                        f"GitHub {stream_name} exceeded the byte limit",
+                        outcome="github_failed",
+                    )
+        return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+    except AdvisorError:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        raise
     except (OSError, subprocess.TimeoutExpired) as exc:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
         raise AdvisorError(
             EXIT_GITHUB, "GitHub read failed", outcome="github_failed"
         ) from exc
-    if completed.returncode != 0:
+    finally:
+        selector.close()
+        if process is not None:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+    if return_code != 0:
         raise AdvisorError(EXIT_GITHUB, "GitHub read failed", outcome="github_failed")
-    return completed.stdout
+    try:
+        return bytes(stdout).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise AdvisorError(
+            EXIT_GITHUB, "GitHub output is not valid UTF-8", outcome="github_failed"
+        ) from exc
 
 
 def get_pr_metadata(gh: str, repository: str, number: int) -> dict[str, Any]:
@@ -1282,7 +1353,11 @@ def capture_pr(
 ) -> tuple[dict[str, Any], str]:
     gh = doctor_result["github"]["path"]
     before = get_pr_metadata(gh, repository, number)
-    diff = gh_command(gh, ["pr", "diff", str(number), "--repo", repository])
+    diff = gh_command(
+        gh,
+        ["pr", "diff", str(number), "--repo", repository],
+        max_stdout_bytes=MAX_SINGLE_FILE_BYTES,
+    )
     after = get_pr_metadata(gh, repository, number)
     if (
         before["headRefOid"] != after["headRefOid"]

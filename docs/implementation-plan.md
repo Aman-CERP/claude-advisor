@@ -96,12 +96,12 @@ Write failing tests against the specification before production runner code.
 
 ### 5.2 Required first-wave failures
 
-- doctor success and dependency/auth failures;
+- doctor success, dependency/auth failures, and hidden `--max-turns` parser recognition;
 - argument/ceiling validation;
 - exact isolation flags;
 - successful advisory parsing and artifact creation;
 - timeout/non-zero/malformed/incomplete Claude results, extra properties, and invalid enum values;
-- PR metadata/diff hashing and post-diff head-object race rejection;
+- bounded PR metadata/diff capture, hashing, and post-diff base/head race rejection;
 - secret-path and secret-pattern rejection/override, including secrets in questions and benign assignments;
 - deterministic report and package output;
 - child-environment denylist and authentication-variable preservation;
