@@ -1,0 +1,37 @@
+{
+  "name": "claude-advisor",
+  "version": "0.1.0",
+  "description": "Safety-first independent Claude advisory and pull-request reviews for Codex",
+  "author": {
+    "name": "Aman-CERP",
+    "url": "https://github.com/Aman-CERP"
+  },
+  "homepage": "https://github.com/Aman-CERP/claude-advisor#readme",
+  "repository": "https://github.com/Aman-CERP/claude-advisor",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude",
+    "codex",
+    "advisory",
+    "code-review",
+    "pull-request"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Advisor",
+    "shortDescription": "Independent Claude advice and PR reviews.",
+    "longDescription": "Ask a locally authenticated Claude Code CLI for a bounded second opinion or evidence-oriented pull-request review, with no Claude tools, strict ceilings, and durable provenance receipts.",
+    "developerName": "Aman-CERP",
+    "category": "Productivity",
+    "capabilities": [
+      "Advisory",
+      "Code review",
+      "Read-only"
+    ],
+    "websiteURL": "https://github.com/Aman-CERP/claude-advisor",
+    "defaultPrompt": [
+      "Ask Claude for an independent opinion on this decision.",
+      "Ask Claude to adversarially review this pull request."
+    ]
+  }
+}

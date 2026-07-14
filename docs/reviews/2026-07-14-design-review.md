@@ -83,7 +83,12 @@ No finding was rejected or deferred.
 
 - Claude Code: `2.1.209 (Claude Code)`.
 - `claude auth status --json`: exit 0 with `loggedIn: true`, `authMethod: claude.ai`, `apiProvider: firstParty`, and `subscriptionType: max`. Identity fields are not retained in plugin receipts.
-- Required command flags and effort values are present in the local 2.1.209 help output.
+- All advertised command flags and effort values are present in the local 2.1.209 help output. `--max-turns` is omitted from help but was separately live-probed: the CLI accepted `--max-turns 1` and returned `num_turns: 1`.
 - GitHub CLI: `2.92.0`.
 - `gh pr view --json baseRefOid,headRefOid,...` returned both object IDs against a live GitHub PR.
 
+## Post-implementation live-smoke finding
+
+The first real structured advisory reported `num_turns: 3` despite a requested `--max-turns 2`. The structured result itself was valid, but the run could not honestly satisfy the bounded-resource claim. The runner now rejects reported turn or cost overages as `ceiling_breach`, emits no validated result, preserves a failure receipt, and has regression coverage for both conditions. Documentation now distinguishes parent-enforced input/time bounds from Claude-side requested turn/cost ceilings plus post-run breach detection.
+
+The separate no-tools behavioral probe asked Claude to create `/tmp/claude-advisor-no-tools-v010`. Claude emitted prose claiming that a tool call succeeded, but the marker did not exist afterward. This proves both that the empty tool set prevented execution and that model narration cannot be used as execution evidence. Release verification therefore checks real side effects and receipts, not self-reported tool success.

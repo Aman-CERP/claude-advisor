@@ -1,0 +1,279 @@
+from __future__ import annotations
+
+import json
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+RUNNER = ROOT / "plugins" / "claude-advisor" / "scripts" / "claude_advisor.py"
+
+REQUIRED_FLAGS = [
+    "--print",
+    "--safe-mode",
+    "--tools",
+    "--no-chrome",
+    "--no-session-persistence",
+    "--output-format",
+    "--json-schema",
+    "--max-turns",
+    "--max-budget-usd",
+    "--model",
+    "--effort",
+]
+
+REQUIRED_HELP_FLAGS = [flag for flag in REQUIRED_FLAGS if flag != "--max-turns"]
+
+ADVISORY_RESULT: dict[str, Any] = {
+    "status": "completed",
+    "executive_summary": "Choose the bounded option after validating the rollback path.",
+    "facts": [
+        {
+            "claim": "The supplied constraint requires reversibility.",
+            "evidence": ["question"],
+        }
+    ],
+    "assumptions": ["The deployment window is fixed."],
+    "options": [
+        {
+            "name": "Option A",
+            "benefits": ["Reversible"],
+            "drawbacks": ["More setup"],
+            "risks": ["Operator error"],
+        }
+    ],
+    "material_risks": ["Rollback has not been rehearsed."],
+    "recommendation": {
+        "choice": "Option A",
+        "rationale": "It meets the stated safety constraint.",
+        "confidence": "high",
+        "conditions_that_change_it": ["Rollback proves unavailable."],
+    },
+    "open_questions": ["Has rollback been rehearsed?"],
+    "validation_steps": ["Run the rollback rehearsal."],
+}
+
+PR_RESULT: dict[str, Any] = {
+    "verdict": "request_changes",
+    "confidence": "high",
+    "summary": "One correctness issue should be fixed before merge.",
+    "findings": [
+        {
+            "id": "F-1",
+            "severity": "high",
+            "confidence": "high",
+            "category": "correctness",
+            "file": "src/example.py",
+            "line": 2,
+            "title": "Incorrect fallback",
+            "evidence": "The added branch returns success on failure.",
+            "failure_scenario": "A failed operation is reported as successful.",
+            "impact": "Callers persist incorrect state.",
+            "recommended_fix": "Return the original error and add a failure-path test.",
+        }
+    ],
+    "residual_risks": ["No live integration evidence was supplied."],
+    "verification_gaps": ["Integration tests were not included."],
+}
+
+
+FAKE_CLAUDE = (
+    r"""#!/usr/bin/env python3
+import json
+import os
+import sys
+import time
+
+args = sys.argv[1:]
+log = os.environ.get("FAKE_CLAUDE_LOG")
+if log:
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "args": args,
+            "env": {
+                "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+                "CLAUDE_CONFIG_DIR": os.environ.get("CLAUDE_CONFIG_DIR"),
+                "CLAUDE_CODE_USE_BEDROCK": os.environ.get("CLAUDE_CODE_USE_BEDROCK"),
+            },
+        }) + "\n")
+
+if args == ["--version"]:
+    print(os.environ.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    raise SystemExit(0)
+
+if args == ["--help"]:
+    missing = os.environ.get("FAKE_CLAUDE_MISSING_FLAG", "")
+    flags = """
+    + repr(" ".join(REQUIRED_HELP_FLAGS))
+    + r""".split()
+    print("\n".join(flag for flag in flags if flag != missing))
+    raise SystemExit(0)
+
+if args == ["auth", "status", "--json"]:
+    if os.environ.get("FAKE_CLAUDE_AUTH", "ok") != "ok":
+        print(json.dumps({"loggedIn": False, "email": "private@example.invalid"}))
+        raise SystemExit(1)
+    print(json.dumps({
+        "loggedIn": True,
+        "authMethod": "claude.ai",
+        "apiProvider": "firstParty",
+        "subscriptionType": "max",
+        "email": "private@example.invalid",
+        "orgId": "secret-org-id",
+    }))
+    raise SystemExit(0)
+
+mode = os.environ.get("FAKE_CLAUDE_MODE", "success")
+_ = sys.stdin.read()
+if mode == "timeout":
+    time.sleep(10)
+if mode == "error":
+    print("token=very-secret-value", file=sys.stderr)
+    raise SystemExit(23)
+if mode == "malformed":
+    print("not-json")
+    raise SystemExit(0)
+
+result = json.loads(os.environ["FAKE_CLAUDE_RESULT"])
+if mode == "invalid-enum":
+    result["status"] = "invented"
+if mode == "extra-property":
+    result["unexpected"] = "must fail"
+if mode == "negative-line":
+    result["findings"][0]["line"] = -1
+envelope = {
+    "type": "result",
+    "subtype": "success",
+    "is_error": False,
+    "duration_ms": 12,
+    "duration_api_ms": 10,
+    "num_turns": 2,
+    "total_cost_usd": 0.01,
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "structured_output": result,
+    "modelUsage": {"fake-model": {"inputTokens": 10, "outputTokens": 20}},
+}
+if mode == "no-structured-output":
+    envelope.pop("structured_output")
+if mode == "turn-breach":
+    envelope["num_turns"] = 99
+if mode == "cost-breach":
+    envelope["total_cost_usd"] = 99.0
+print(json.dumps(envelope))
+"""
+)
+
+
+FAKE_GH = r"""#!/usr/bin/env python3
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+log = os.environ.get("FAKE_GH_LOG")
+prior = []
+if log and os.path.exists(log):
+    with open(log, encoding="utf-8") as handle:
+        prior = [json.loads(line) for line in handle if line.strip()]
+if log:
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"args": args}) + "\n")
+
+if args == ["--version"]:
+    print("gh version 2.92.0 (fake)")
+    raise SystemExit(0)
+if args == ["auth", "status"]:
+    raise SystemExit(0 if os.environ.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
+if args[:2] == ["pr", "diff"]:
+    print("diff --git a/src/example.py b/src/example.py")
+    print("--- a/src/example.py")
+    print("+++ b/src/example.py")
+    print("@@ -1 +1,2 @@")
+    print(" value = 1")
+    print("+value = 2")
+    raise SystemExit(0)
+if args[:2] == ["pr", "view"]:
+    view_count = sum(1 for item in prior if item["args"][:2] == ["pr", "view"])
+    heads = os.environ.get("FAKE_GH_HEADS", "head-a,head-a").split(",")
+    bases = os.environ.get("FAKE_GH_BASES", "base-a,base-a").split(",")
+    head = heads[min(view_count, len(heads) - 1)]
+    base = bases[min(view_count, len(bases) - 1)]
+    print(json.dumps({
+        "number": 42,
+        "title": "Improve behavior",
+        "url": "https://github.com/example/project/pull/42",
+        "author": {"login": "reviewer"},
+        "baseRefName": "main",
+        "headRefName": "feature",
+        "baseRefOid": base,
+        "headRefOid": head,
+        "additions": 1,
+        "deletions": 0,
+        "changedFiles": 1,
+    }))
+    raise SystemExit(0)
+print("unexpected gh invocation", file=sys.stderr)
+raise SystemExit(2)
+"""
+
+
+def write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def fake_environment(
+    temp: Path, result: dict[str, Any] | None = None
+) -> tuple[dict[str, str], Path, Path]:
+    bin_dir = temp / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    gh = bin_dir / "gh"
+    write_executable(claude, FAKE_CLAUDE)
+    write_executable(gh, FAKE_GH)
+    claude_log = temp / "claude.jsonl"
+    gh_log = temp / "gh.jsonl"
+    env = os.environ.copy()
+    env.update(
+        {
+            "CLAUDE_ADVISOR_CLAUDE_BIN": str(claude),
+            "CLAUDE_ADVISOR_GH_BIN": str(gh),
+            "FAKE_CLAUDE_LOG": str(claude_log),
+            "FAKE_GH_LOG": str(gh_log),
+            "FAKE_CLAUDE_RESULT": json.dumps(result or ADVISORY_RESULT),
+            "ANTHROPIC_API_KEY": "preserve-this-auth-value",
+            "CLAUDE_CONFIG_DIR": "/must/not/reach/child",
+            "CLAUDE_CODE_USE_BEDROCK": "must-not-reach-child",
+        }
+    )
+    return env, claude_log, gh_log
+
+
+def run_cli(
+    args: list[str], *, cwd: Path, env: dict[str, str], timeout: float = 10
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(RUNNER), *args],
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def stdout_json(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    return json.loads(completed.stdout)
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]

@@ -6,7 +6,7 @@ Depends on: `docs/specification.md`
 
 ## 1. Delivery strategy
 
-Implement one small, standard-library Python runner and two thin Codex skills. The runner owns validation, isolation, process execution, artifact creation, and deterministic rendering. Skills own user-facing workflow guidance and call the runner rather than duplicating command logic.
+Implement one cohesive, standard-library Python runner and two thin Codex skills. The runner owns validation, isolation, process execution, artifact creation, and deterministic rendering. Skills own user-facing workflow guidance and call the runner rather than duplicating command logic.
 
 The release proceeds through specification, plan review, tests-first implementation, adversarial diff review, verification, packaging, publication, and global local installation.
 
@@ -126,7 +126,7 @@ Implement in this dependency order:
 8. subprocess executor with argument arrays, controlled environment, timeout, and captured streams;
 9. doctor checks;
 10. Claude envelope and structured-output extraction;
-11. deterministic schema validation and Markdown rendering; the validator implements every keyword used by bundled schemas (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, and `maxItems`) and treats unsupported bundled keywords as build errors;
+11. deterministic schema validation and Markdown rendering; the validator implements every keyword used by bundled schemas (`type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`) and treats unsupported bundled keywords as build errors;
 12. advisory orchestration;
 13. GitHub/supplied-diff review orchestration.
 
