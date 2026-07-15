@@ -32,7 +32,7 @@
     "requirements": [
       "Python 3.11 or newer",
       "Claude Code 2.1.209 or newer, installed and authenticated by the user",
-      "GitHub CLI 2.x only for GitHub pull-request mode"
+      "GitHub CLI 2.x only for GitHub pull-request mode or the optional explicit update check"
     ]
   },
   "recommended_initial_regions": [

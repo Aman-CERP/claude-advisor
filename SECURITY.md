@@ -18,4 +18,11 @@ The runner selects models through fixed quality profiles, verifies the initializ
 
 The runner gives child processes an explicit environment allowlist. Version 0.2 supports stored Anthropic subscription OAuth and documented first-party credential variables, but intentionally drops custom Anthropic endpoints, third-party cloud-provider modes, and unknown Claude configuration variables. Standard certificate and HTTP proxy variables remain available; organizations should review their workstation proxy and trust-store policy separately.
 
+Update discovery is off by default. `doctor --check-update` is an explicit,
+read-only request through the authenticated GitHub CLI to the fixed public
+AmanERP repository's latest stable release endpoint. It sends no review content
+or usage telemetry, validates canonical release metadata, and cannot install,
+remove, pin, or upgrade a plugin. Marketplace changes always remain a separate
+operator action.
+
 The secret scanner is a fail-closed guard for common high-confidence patterns, not a complete data-loss-prevention system. Operators remain responsible for approving context and complying with their organization's data policy.

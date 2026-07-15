@@ -130,7 +130,12 @@ SUPPORTED_SCHEMA_KEYS = {
 
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 VERSION_PATTERN = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+STABLE_RELEASE_TAG_PATTERN = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+UPDATE_REPOSITORY = "Aman-CERP/amanerp-second-opinion"
+UPDATE_ENDPOINT = f"repos/{UPDATE_REPOSITORY}/releases/latest"
+GIT_MARKETPLACE_UPDATE_COMMAND = "codex plugin marketplace upgrade amanerp"
 
 QUALITY_PROFILES = ("standard", "deep", "critical")
 ADVISORY_PROFILE_DEFAULTS: dict[str, dict[str, Any]] = {
@@ -519,7 +524,7 @@ def version_string(value: tuple[int, int, int]) -> str:
     return ".".join(str(part) for part in value)
 
 
-def doctor(*, require_gh: bool) -> dict[str, Any]:
+def doctor(*, require_gh: bool, check_update: bool = False) -> dict[str, Any]:
     if sys.version_info < MIN_PYTHON:
         raise AdvisorError(
             EXIT_DEPENDENCY, "Python 3.11 or newer is required", outcome="unavailable"
@@ -613,7 +618,7 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
         "warnings": warnings,
     }
 
-    if require_gh:
+    if require_gh or check_update:
         gh = resolve_executable("AMANERP_SECOND_OPINION_GH_BIN", "gh")
         gh_version_result = run_probe([gh, "--version"], child_kind="github")
         if gh_version_result.returncode != 0:
@@ -633,6 +638,8 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
             "version": version_string(gh_version),
             "authenticated": True,
         }
+        if check_update:
+            result["update"] = get_update_status(gh)
 
     return result
 
@@ -1867,6 +1874,78 @@ def gh_command(
         ) from exc
 
 
+def get_update_status(gh: str) -> dict[str, Any]:
+    raw = gh_command(
+        gh,
+        [
+            "api",
+            "--hostname",
+            "github.com",
+            UPDATE_ENDPOINT,
+            "--method",
+            "GET",
+            "--header",
+            "Accept: application/vnd.github+json",
+        ],
+    )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AdvisorError(
+            EXIT_GITHUB,
+            "GitHub returned malformed release metadata",
+            outcome="github_failed",
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise AdvisorError(
+            EXIT_GITHUB,
+            "GitHub returned malformed release metadata",
+            outcome="github_failed",
+        )
+    tag = payload.get("tag_name")
+    release_url = payload.get("html_url")
+    match = STABLE_RELEASE_TAG_PATTERN.fullmatch(tag) if isinstance(tag, str) else None
+    expected_url = (
+        f"https://github.com/{UPDATE_REPOSITORY}/releases/tag/{tag}" if match else None
+    )
+    if (
+        match is None
+        or release_url != expected_url
+        or payload.get("draft") is not False
+        or payload.get("prerelease") is not False
+    ):
+        raise AdvisorError(
+            EXIT_GITHUB,
+            "GitHub returned invalid or non-stable release metadata",
+            outcome="github_failed",
+        )
+
+    installed_text = PLUGIN_VERSION.split("+", 1)[0]
+    installed_match = STABLE_RELEASE_TAG_PATTERN.fullmatch(f"v{installed_text}")
+    if installed_match is None:
+        raise AdvisorError(
+            EXIT_INTERNAL,
+            "installed plugin version is not stable semantic versioning",
+            outcome="internal_error",
+        )
+    installed = tuple(int(part) for part in installed_match.groups())
+    latest = tuple(int(part) for part in match.groups())
+
+    return {
+        "checked": True,
+        "channel": "github_releases",
+        "repository": UPDATE_REPOSITORY,
+        "installed_version": installed_text,
+        "latest_version": tag.removeprefix("v"),
+        "update_available": installed < latest,
+        "ahead_of_latest": installed > latest,
+        "release_url": release_url,
+        "git_marketplace_update_command": GIT_MARKETPLACE_UPDATE_COMMAND,
+        "new_task_required": True,
+    }
+
+
 def get_pr_metadata(gh: str, repository: str, number: int) -> dict[str, Any]:
     raw = gh_command(
         gh, ["pr", "view", str(number), "--repo", repository, "--json", PR_FIELDS]
@@ -2066,6 +2145,11 @@ def build_parser() -> SafeArgumentParser:
         "doctor", help="Verify local prerequisites without exposing credentials"
     )
     doctor_parser.add_argument("--require-gh", action="store_true")
+    doctor_parser.add_argument(
+        "--check-update",
+        action="store_true",
+        help="explicitly check the latest stable GitHub release without installing it",
+    )
 
     advisory = subparsers.add_parser(
         "advisory", help="Ask Claude for a bounded independent advisory"
@@ -2091,7 +2175,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = build_parser().parse_args(argv)
         if args.command == "doctor":
-            emit(doctor(require_gh=args.require_gh))
+            emit(
+                doctor(
+                    require_gh=args.require_gh or args.check_update,
+                    check_update=args.check_update,
+                )
+            )
             return 0
         if args.command == "advisory":
             emit(run_advisory(args))

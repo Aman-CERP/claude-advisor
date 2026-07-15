@@ -321,6 +321,37 @@ def validate_public_identity() -> None:
             )
 
 
+def validate_update_lifecycle() -> None:
+    for relative in (
+        "docs/update-policy.md",
+        "scripts/marketplace_update_smoke.py",
+        "scripts/validate_release.py",
+    ):
+        require((ROOT / relative).is_file(), f"missing update artifact: {relative}")
+
+    runner = (PLUGIN / "scripts" / "second_opinion.py").read_text(encoding="utf-8")
+    require('"--check-update"' in runner, "runner is missing explicit update check")
+    require(
+        'UPDATE_ENDPOINT = f"repos/{UPDATE_REPOSITORY}/releases/latest"' in runner,
+        "runner update endpoint must remain fixed",
+    )
+    require(
+        "codex plugin marketplace upgrade amanerp" in runner,
+        "runner update guidance mismatch",
+    )
+
+    for name in ("independent-advisory", "independent-pr-review"):
+        skill = (PLUGIN / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        require(
+            "Never run `doctor --check-update` automatically." in skill,
+            f"skill must prohibit automatic update checks: {name}",
+        )
+
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    for target in ("release-contract:", "marketplace-update-smoke:"):
+        require(target in makefile, f"Makefile is missing {target}")
+
+
 def main() -> int:
     validate_manifest()
     validate_marketplace()
@@ -328,6 +359,7 @@ def main() -> int:
     validate_source_safety()
     validate_submission()
     validate_public_identity()
+    validate_update_lifecycle()
     print("project validation passed")
     return 0
 

@@ -291,6 +291,34 @@ if args == ["--version"]:
     raise SystemExit(0)
 if args == ["auth", "status"]:
     raise SystemExit(0 if control.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
+if args == [
+    "api",
+    "--hostname",
+    "github.com",
+    "repos/Aman-CERP/amanerp-second-opinion/releases/latest",
+    "--method",
+    "GET",
+    "--header",
+    "Accept: application/vnd.github+json",
+]:
+    mode = control.get("FAKE_GH_RELEASE_MODE", "success")
+    if mode == "failure":
+        raise SystemExit(1)
+    if mode == "malformed-json":
+        print("{not-json")
+        raise SystemExit(0)
+    tag = control.get("FAKE_GH_LATEST_TAG", "v0.3.0")
+    url = control.get(
+        "FAKE_GH_RELEASE_URL",
+        f"https://github.com/Aman-CERP/amanerp-second-opinion/releases/tag/{tag}",
+    )
+    print(json.dumps({
+        "tag_name": tag,
+        "html_url": url,
+        "draft": control.get("FAKE_GH_RELEASE_DRAFT", "false") == "true",
+        "prerelease": control.get("FAKE_GH_RELEASE_PRERELEASE", "false") == "true",
+    }))
+    raise SystemExit(0)
 if args[:2] == ["pr", "diff"]:
     forced_size = int(control.get("FAKE_GH_DIFF_BYTES", "0"))
     if forced_size:

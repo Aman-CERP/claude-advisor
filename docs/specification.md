@@ -41,7 +41,7 @@ Second Opinion standardizes that boundary while preserving human judgment.
 5. Enforce deterministic input/time ceilings and fail closed when Claude reports exceeding requested turn or spend ceilings.
 6. Fail visibly on missing prerequisites, authentication failures, timeouts, non-zero exits, incomplete results, or malformed output.
 7. Make the plugin installable from a public Codex marketplace repository and eligible for OpenAI Plugin Directory review while remaining available across all local workspaces for that Codex user.
-8. Keep V1 dependency-free beyond Python 3.11+, Git, GitHub CLI for PR mode, and Claude Code.
+8. Keep V1 dependency-free beyond Python 3.11+, Git, GitHub CLI for PR mode or explicit update checks, and Claude Code.
 9. Publish under the verified AmanERP identity with accurate public support, privacy, terms, and data-flow disclosures.
 10. Keep the customer-facing product identity independent from Anthropic trademarks and state the third-party dependency without implying affiliation or endorsement.
 11. Enforce auditable model-quality profiles so consequential work cannot silently downgrade from Opus to Sonnet or accept Haiku as the answering model.
@@ -178,6 +178,21 @@ The runner provides `doctor` and verifies:
 Doctor fails closed when a mandatory flag is missing. It warns, but does not fail, when Claude is newer than the highest behavior-tested version, because flag presence does not prove unchanged semantics. Authentication output is reduced to non-identifying status fields before display or persistence.
 
 It returns structured JSON and a non-zero exit when a required check fails. It must not print credentials or full environment contents.
+
+An explicit `doctor --check-update` option performs a read-only release check. The
+option implies the GitHub CLI preflight, queries only
+`Aman-CERP/amanerp-second-opinion` on `github.com` through GitHub's latest stable release API,
+accepts only a canonical `vMAJOR.MINOR.PATCH` tag and canonical HTTPS GitHub
+release URL, and reports the installed version, latest version, comparison state,
+release URL, documented Git-marketplace upgrade command, and fresh-task
+requirement. Drafts, prereleases, malformed metadata, non-canonical URLs, and API
+failures fail closed with the GitHub-read exit code.
+
+Normal `doctor`, analysis commands, and skill invocation must not check for
+updates. The runner never installs, removes, upgrades, or pins a plugin; it emits
+no background request, hidden telemetry, or update notification. The operator
+must explicitly request the check and separately authorize any supported Codex
+plugin command.
 
 ### FR-3: Advisory command
 
@@ -441,7 +456,7 @@ Supported V1 environment:
 - Python 3.11+;
 - Codex release supporting plugin marketplaces and plugin skills;
 - Claude Code 2.1.209+ for the exact tested isolation flags; 2.1.210 is the highest behavior-tested release for v0.2.0, and newer releases produce a compatibility warning;
-- GitHub CLI 2.x only for `--pr` mode;
+- GitHub CLI 2.x only for `--pr` mode or explicit `doctor --check-update`;
 - Git for local source metadata and packaging workflows.
 
 Windows native support is not claimed in V1. WSL may work but is unverified.
@@ -556,11 +571,33 @@ Manifest copy, listing copy, README prerequisites, and reviewer guidance consist
 
 The README and changelog document removal of `claude-advisor@aman-cerp` before installation of `amanerp-second-opinion@amanerp`, explain that existing run artifacts are not automatically moved or deleted, and preserve GitHub's redirect from the former repository URL.
 
+### AC-23: Explicit update lifecycle
+
+Tests prove normal doctor and skill workflows make no update request;
+`doctor --check-update` uses only the fixed read-only GitHub release endpoint,
+reports current, ahead, and update-available states deterministically, rejects
+malformed or non-stable release metadata, and does not mutate plugin state. A
+loopback-only integration smoke proves that refreshing a Git-backed Codex
+marketplace upgrades its cached installed plugin without touching the operator's
+real Codex home. Documentation distinguishes Git-marketplace refreshes, local
+development reinstalls, and OpenAI Plugin Directory review/publish updates, and
+requires a fresh Codex task after an installed update.
+
 ## 16. Release and support policy
 
 - Semantic versioning.
 - Git tags and GitHub releases are immutable publication points.
 - Every release publishes the deterministic ZIP and SHA-256 file.
+- The tag, plugin manifest, Python project, runner constant, changelog heading,
+  and submission release-notes heading must agree before a release job publishes.
+- Git-marketplace users update with `codex plugin marketplace upgrade amanerp`;
+  the refresh may replace the installed cached version, so operators review the
+  release and run a fresh Codex task after upgrading.
+- Update discovery is opt-in. Maintainers announce releases through GitHub
+  Releases and team-owned channels; the plugin never phones home or silently
+  updates itself.
+- OpenAI Plugin Directory updates are separate reviewed submissions. A GitHub
+  release does not imply that the directory listing has been updated or approved.
 - Minimum supported CLI versions are documented per release.
 - Security reports follow `SECURITY.md` and should not be filed publicly until coordinated disclosure is appropriate.
 - V1 is advisory software. Maintainers do not warrant review completeness or correctness.

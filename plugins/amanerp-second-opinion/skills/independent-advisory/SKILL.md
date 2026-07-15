@@ -17,6 +17,7 @@ Use this skill to add an independent external perspective, not to replace reposi
 - Default to the Opus `deep` profile. Use Opus/xhigh `critical` for security, architecture, irreversible operations, release gates, or decisions whose failure could materially harm users.
 - Use Sonnet `standard` only when the user explicitly requests a lower-cost standard opinion after being told it replaces Opus. Pass both `--quality standard` and `--acknowledge-standard-quality`.
 - Fail visibly if doctor or the run fails. Never retry with a lower quality profile unless the user separately authorizes that new run, and never substitute Codex's own opinion as Claude's.
+- Never run `doctor --check-update` automatically. Use it only when the user explicitly asks for update status, and never run a Codex marketplace command without separate authorization.
 
 ## Workflow
 

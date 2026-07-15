@@ -8,6 +8,7 @@
 - Claude runs in safe mode with an empty tool set, Chrome disabled, session persistence disabled, and no permission-bypass flag.
 - GitHub access is read-only and the plugin never comments, approves, labels, merges, commits, or pushes.
 - The plugin sends no AmanERP telemetry and stores no credentials.
+- Update discovery is disabled by default; the explicit check reads only public stable-release metadata and cannot mutate plugin state.
 - Selected input is sent directly to Anthropic through the user's own Claude Code authentication.
 - Public copy identifies unsupported hosted surfaces and the independent, non-affiliated publisher relationship.
 - Automated tests require no private network, private repository, live credential, or AmanERP-only context.

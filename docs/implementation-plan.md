@@ -54,12 +54,41 @@ This release preserves the v0.1 runtime trust boundary while replacing the publi
 5. Update both skills, direct-run documentation, submission materials, changelog, and validators to disclose the enforced profile policy and prohibit silent downgrade after failure.
 6. Re-run all local gates, package reproducibility, official validators, cache-safe local reinstall, a synthetic live smoke on the highest-tested Claude CLI, and an Opus critical dogfood review of the final PR diff.
 
+### Phase G — update lifecycle hardening
+
+1. Add an explicit-only `doctor --check-update` contract. Use the existing
+   authenticated, read-only GitHub CLI boundary; query a fixed repository and
+   stable-release endpoint; validate canonical SemVer and release URL fields; and
+   report comparison state without changing installed plugin state.
+2. Add failing runner tests for no implicit update request, update available,
+   current, locally ahead, malformed metadata, API failure, and GitHub
+   authentication failure before implementing the option.
+3. Add a dependency-free, loopback-only marketplace integration smoke using an
+   isolated `CODEX_HOME`. Prove that `codex plugin marketplace upgrade amanerp`
+   refreshes a Git source and replaces the cached installed version without
+   modifying the maintainer's actual Codex configuration.
+4. Add a release-contract validator for tag/version/changelog/release-notes
+   agreement and wire it into the tag workflow before packaging and publication.
+5. Publish an update policy covering Git-marketplace refreshes, local development
+   reinstalls, OpenAI Plugin Directory update review, notifications, rollback,
+   immutable releases, and the fresh-task requirement.
+6. Re-run repository, package, official validator, isolated marketplace, local
+   installation, and opt-in live update checks. Dogfood the installed Opus
+   critical PR-review skill against the immutable PR head, reconcile every
+   critical/high/medium finding, and rerun after material fixes.
+
 ## V0.2 rollback
 
 - GitHub redirects the former repository URL after the neutral repository rename.
 - The retired marketplace/plugin remains removable by its former identifiers; it is not silently overwritten.
 - Existing `.codex/claude-advisor/` artifacts remain untouched and are not migrated automatically.
 - Reverting this release restores the v0.1 package without changing Claude or GitHub credentials.
+- A Git-marketplace rollback pins the marketplace to an immutable release tag,
+  reinstalls that cached version, and starts a fresh task. Returning to the
+  default branch restores normal future marketplace upgrades.
+- Directory users receive rollback or superseding-release instructions through
+  the same reviewed listing-update path; published artifacts and tags are never
+  replaced.
 
 ## V0.1 implementation record
 
@@ -332,6 +361,7 @@ Generate a review bundle from `git diff --no-index /dev/null` for the initial re
 | AC-13 | global plugin listing from multiple AmanERP checkouts |
 | AC-14 | versioned design and final diff review records |
 | AC-15 | public GitHub Actions checks |
+| AC-23 | explicit update-check tests, release-contract validator, loopback marketplace-upgrade smoke, and update policy |
 
 ## 14. Stop conditions
 

@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: check clean compile doctor live-smoke package package-repro-check test validate
+.PHONY: check clean compile doctor live-smoke marketplace-update-smoke package package-repro-check release-contract test validate
 
 check: compile validate test
 
@@ -18,6 +18,12 @@ package:
 
 package-repro-check:
 	$(PYTHON) -m unittest -v tests.test_packaging.PackagingTests.test_package_is_deterministic_and_contains_only_plugin_files
+
+release-contract:
+	$(PYTHON) scripts/validate_release.py --tag "$(TAG)"
+
+marketplace-update-smoke:
+	$(PYTHON) scripts/marketplace_update_smoke.py
 
 doctor:
 	$(PYTHON) plugins/amanerp-second-opinion/scripts/second_opinion.py doctor --require-gh

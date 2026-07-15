@@ -7,7 +7,7 @@ Second Opinion by AmanERP is a skills-only plugin for local Codex workflows. It 
 - Local Codex on macOS or Linux
 - Python 3.11 or newer
 - Claude Code 2.1.209 or newer for optional live inference; 2.1.210 is the highest behavior-tested release
-- GitHub CLI 2.x only for the public-PR test
+- GitHub CLI 2.x only for the public-PR test or optional explicit update check
 
 The plugin is not functional in ChatGPT web, Codex cloud, mobile, or Windows-native environments because those surfaces cannot satisfy its documented local-process contract.
 
@@ -22,6 +22,13 @@ make package-repro-check
 ```
 
 The test harness supplies fake `claude` and `gh` executables. It performs no inference, needs no account, and verifies command isolation, bounded subprocess behavior, secret screening, schema validation, quality-profile enforcement, actual answering-model verification, no automatic fallback, redacted failure evidence, receipts, public listing metadata, exact submission test counts, and deterministic packaging.
+
+With Codex CLI installed, `make marketplace-update-smoke` additionally creates a
+temporary Git marketplace and temporary `CODEX_HOME`, installs v1.0.0, publishes
+a loopback-only v1.1.0 fixture, refreshes the marketplace, and proves the enabled
+cache moved to v1.1.0. It does not read or alter the reviewer's real Codex home.
+For a tag candidate, `make release-contract TAG=v0.2.0` proves all version-bearing
+release artifacts agree.
 
 Validate the packaged plugin with OpenAI's current local validators:
 
@@ -40,9 +47,10 @@ Use only the reviewer's own Claude Code account and applicable Anthropic terms. 
 
 1. Install and authenticate Claude Code.
 2. Run `make doctor`.
-3. Run positive cases P1, P3, and P4 from `test-cases.json`.
-4. Inspect `report.md`, `result.json`, and `receipt.json` in the printed run directory.
-5. Confirm the receipt records read-only isolation controls, the expected source hash or PR object IDs, an Opus `primary_model_observed` for deep/critical cases, and no auxiliary model.
+3. Optionally run `python3 plugins/amanerp-second-opinion/scripts/second_opinion.py doctor --check-update`; confirm it reports release state without invoking a Codex update command.
+4. Run positive cases P1, P3, and P4 from `test-cases.json`.
+5. Inspect `report.md`, `result.json`, and `receipt.json` in the printed run directory.
+6. Confirm the receipt records read-only isolation controls, the expected source hash or PR object IDs, an Opus `primary_model_observed` for deep/critical cases, and no auxiliary model.
 
 The default `deep` profile uses Opus/high and `--critical` uses Opus/xhigh. Sonnet/high is available only with `--quality standard --acknowledge-standard-quality`; it must never be used as an automatic retry after an Opus failure.
 

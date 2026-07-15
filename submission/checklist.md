@@ -18,6 +18,9 @@
 - [x] Non-affiliation and trademark notice
 - [x] Opus-first quality profiles with answering-model verification
 - [x] Explicit Sonnet acknowledgment and no automatic model fallback
+- [x] Explicit-only update check with no background polling or install mutation
+- [x] Release-contract validation and isolated Git-marketplace upgrade smoke
+- [x] Documented notification, fresh-task, rollback, and directory-update policy
 
 ## Human-controlled gates
 

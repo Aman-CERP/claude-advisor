@@ -12,6 +12,8 @@ All notable changes are documented here. The project follows Semantic Versioning
 - AmanERP-owned public website, support, privacy, and terms URL contracts.
 - AmanERP brand assets and two product-workflow screenshots for the plugin listing.
 - Public issue forms, support and conduct guidance, pull-request template, and deterministic tag-release automation.
+- Explicit, read-only `doctor --check-update` release discovery with strict stable-release metadata validation and no installation side effect.
+- A release-contract validator, documented rollback policy, and loopback-only isolated Codex Git-marketplace upgrade smoke.
 
 ### Changed
 
@@ -24,6 +26,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Added deterministic session names to suppress Claude Code's auxiliary Haiku title-generation call and fail closed on any unapproved answering or auxiliary model.
 - Classified moving-alias and dated identifiers within the requested model family as primary while continuing to reject every different-family auxiliary model.
 - Added redacted `claude-failure.json` diagnostics for non-zero Claude exits and prohibited automatic model fallback after failure.
+- Replaced remove/re-add update guidance with the supported Git-marketplace upgrade command, a fresh-task boundary, and a clear separation between GitHub releases and reviewed OpenAI Plugin Directory updates.
 
 ### Migration
 

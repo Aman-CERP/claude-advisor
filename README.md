@@ -19,7 +19,7 @@ Second Opinion by AmanERP is an independent project. AmanERP is not affiliated w
 - Python 3.11 or newer.
 - A Codex release with plugin marketplace support.
 - Claude Code 2.1.209 or newer, separately installed and authenticated by the user. Version 2.1.210 is the currently behavior-tested isolation baseline; later versions produce a warning until their no-tools behavior is reverified.
-- GitHub CLI 2.x, authenticated locally, only for GitHub pull-request mode.
+- GitHub CLI 2.x, authenticated locally, for GitHub pull-request mode or the optional explicit update check.
 
 Install and authenticate Claude Code using [Anthropic's setup guide](https://docs.anthropic.com/en/docs/claude-code/getting-started). Every user must use their own Claude account or an organization-approved first-party Anthropic credential. The plugin does not share credentials, proxy requests, or support custom model gateways and cloud-provider modes.
 
@@ -69,6 +69,13 @@ From a source checkout:
 ```bash
 RUNNER="$(pwd)/plugins/amanerp-second-opinion/scripts/second_opinion.py"
 python3 "$RUNNER" doctor --require-gh
+```
+
+Update discovery is explicit and read-only. It requires an authenticated GitHub
+CLI, checks only the latest stable GitHub release, and never installs anything:
+
+```bash
+python3 "$RUNNER" doctor --check-update
 ```
 
 Decision advisory:
@@ -155,14 +162,31 @@ The old GitHub URL redirects to the renamed repository. Existing `.codex/claude-
 
 ## Update or remove
 
-Refresh the marketplace snapshot, then reinstall:
+For the public Git marketplace, review the release notes and refresh the tracked
+marketplace:
+
+```bash
+codex plugin marketplace upgrade amanerp
+codex plugin list --json
+```
+
+The marketplace refresh can replace the installed cached version. Start a new
+Codex task before using the updated skills. The plugin does not poll for updates,
+show a guaranteed update badge, or silently update itself.
+
+To roll back, pin a reviewed immutable release tag and reinstall:
 
 ```bash
 codex plugin marketplace remove amanerp
-codex plugin marketplace add Aman-CERP/amanerp-second-opinion
-codex plugin remove amanerp-second-opinion@amanerp
+codex plugin marketplace add Aman-CERP/amanerp-second-opinion --ref v0.2.0
 codex plugin add amanerp-second-opinion@amanerp
 ```
+
+A pin intentionally stops following newer marketplace revisions. Remove the
+pinned marketplace and add the repository without `--ref` to return to normal
+updates. Public Plugin Directory updates follow OpenAI's separate review and
+publisher-controlled publication flow; a GitHub release does not update the
+directory automatically.
 
 To uninstall completely:
 
@@ -173,12 +197,17 @@ codex plugin marketplace remove amanerp
 
 Removing the plugin does not delete local run artifacts or alter Claude credentials.
 
+See [the complete update and release policy](docs/update-policy.md) for local
+development refreshes, release notifications, rollback, and public-directory
+updates.
+
 ## Develop and package
 
 ```bash
 make check
 make package
 make package-repro-check
+make marketplace-update-smoke
 ```
 
 The runtime has no third-party Python dependency. Release archives use stored ZIP entries with normalized metadata for cross-toolchain reproducibility.

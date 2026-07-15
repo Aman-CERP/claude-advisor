@@ -26,6 +26,16 @@ from tests.helpers import (
 
 
 class DoctorTests(unittest.TestCase):
+    def test_doctor_does_not_check_for_updates_implicitly(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, gh_log = fake_environment(root)
+            completed = run_cli(["doctor"], cwd=root, env=env)
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse(gh_log.exists())
+            self.assertNotIn("update", stdout_json(completed))
+
     def test_doctor_reports_sanitized_success_and_newer_version_warning(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -40,6 +50,101 @@ class DoctorTests(unittest.TestCase):
             self.assertNotIn("email", json.dumps(payload))
             self.assertNotIn("orgId", json.dumps(payload))
             self.assertTrue(payload["warnings"])
+
+    def test_doctor_reports_an_available_update_from_fixed_release_endpoint(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, gh_log = fake_environment(root)
+            completed = run_cli(["doctor", "--check-update"], cwd=root, env=env)
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            update = stdout_json(completed)["update"]
+            self.assertEqual(
+                update,
+                {
+                    "checked": True,
+                    "channel": "github_releases",
+                    "repository": "Aman-CERP/amanerp-second-opinion",
+                    "installed_version": "0.2.0",
+                    "latest_version": "0.3.0",
+                    "update_available": True,
+                    "ahead_of_latest": False,
+                    "release_url": "https://github.com/Aman-CERP/amanerp-second-opinion/releases/tag/v0.3.0",
+                    "git_marketplace_update_command": "codex plugin marketplace upgrade amanerp",
+                    "new_task_required": True,
+                },
+            )
+            calls = read_jsonl(gh_log)
+            self.assertEqual(
+                calls[-1]["args"],
+                [
+                    "api",
+                    "--hostname",
+                    "github.com",
+                    "repos/Aman-CERP/amanerp-second-opinion/releases/latest",
+                    "--method",
+                    "GET",
+                    "--header",
+                    "Accept: application/vnd.github+json",
+                ],
+            )
+
+    def test_doctor_reports_current_and_locally_ahead_versions(self) -> None:
+        cases = (
+            ("v0.2.0", False, False),
+            ("v0.1.0", False, True),
+        )
+        for tag, update_available, ahead_of_latest in cases:
+            with self.subTest(tag=tag), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                env, _, _ = fake_environment(root)
+                env["FAKE_GH_LATEST_TAG"] = tag
+                completed = run_cli(["doctor", "--check-update"], cwd=root, env=env)
+
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                update = stdout_json(completed)["update"]
+                self.assertEqual(update["update_available"], update_available)
+                self.assertEqual(update["ahead_of_latest"], ahead_of_latest)
+
+    def test_doctor_rejects_invalid_or_unstable_release_metadata(self) -> None:
+        cases = (
+            {"FAKE_GH_RELEASE_MODE": "malformed-json"},
+            {"FAKE_GH_LATEST_TAG": "v0.3.0-rc.1"},
+            {"FAKE_GH_RELEASE_URL": "https://example.invalid/releases/tag/v0.3.0"},
+            {"FAKE_GH_RELEASE_DRAFT": "true"},
+            {"FAKE_GH_RELEASE_PRERELEASE": "true"},
+        )
+        for overrides in cases:
+            with (
+                self.subTest(overrides=overrides),
+                tempfile.TemporaryDirectory() as raw,
+            ):
+                root = Path(raw)
+                env, _, _ = fake_environment(root)
+                env.update(overrides)
+                completed = run_cli(["doctor", "--check-update"], cwd=root, env=env)
+
+                self.assertEqual(completed.returncode, 8)
+                self.assertNotIn("update", stdout_json(completed))
+
+    def test_doctor_surfaces_release_api_and_authentication_failures(self) -> None:
+        cases = (
+            ({"FAKE_GH_RELEASE_MODE": "failure"}, 8),
+            ({"FAKE_GH_AUTH": "missing"}, 4),
+        )
+        for overrides, expected_code in cases:
+            with (
+                self.subTest(overrides=overrides),
+                tempfile.TemporaryDirectory() as raw,
+            ):
+                root = Path(raw)
+                env, _, _ = fake_environment(root)
+                env.update(overrides)
+                completed = run_cli(["doctor", "--check-update"], cwd=root, env=env)
+
+                self.assertEqual(completed.returncode, expected_code)
 
     def test_doctor_fails_each_missing_required_flag(self) -> None:
         for flag in REQUIRED_HELP_FLAGS:

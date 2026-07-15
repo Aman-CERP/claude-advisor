@@ -17,6 +17,7 @@ Use this skill for an independent review snapshot with durable provenance. It ne
 - Do not post review findings to GitHub without a separate, explicit user request.
 - Default to the Opus `deep` profile. Use Opus/xhigh `critical` for auth, authorization, tenancy, billing, migrations, PII, secrets, destructive operations, incident/compliance work, or release gating.
 - Use Sonnet `standard` only when the user explicitly requests a lower-cost standard review after being told it replaces Opus. Never silently downgrade or retry with Sonnet after an Opus failure.
+- Never run `doctor --check-update` automatically. Use it only when the user explicitly asks for update status, and never run a Codex marketplace command without separate authorization.
 
 ## Workflow
 
