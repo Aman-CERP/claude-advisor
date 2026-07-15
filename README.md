@@ -18,7 +18,7 @@ Second Opinion by AmanERP is an independent project. AmanERP is not affiliated w
 - macOS or Linux.
 - Python 3.11 or newer.
 - A Codex release with plugin marketplace support.
-- Claude Code 2.1.209 or newer, separately installed and authenticated by the user. Version 2.1.209 is the currently behavior-tested isolation baseline; later versions produce a warning until their no-tools behavior is reverified.
+- Claude Code 2.1.209 or newer, separately installed and authenticated by the user. Version 2.1.210 is the currently behavior-tested isolation baseline; later versions produce a warning until their no-tools behavior is reverified.
 - GitHub CLI 2.x, authenticated locally, only for GitHub pull-request mode.
 
 Install and authenticate Claude Code using [Anthropic's setup guide](https://docs.anthropic.com/en/docs/claude-code/getting-started). Every user must use their own Claude account or an organization-approved first-party Anthropic credential. The plugin does not share credentials, proxy requests, or support custom model gateways and cloud-provider modes.
@@ -51,6 +51,16 @@ Use $independent-pr-review to adversarially review PR 123 in owner/repository.
 ```
 
 Neither skill can be invoked implicitly. Before execution, Codex tells the user which selected content will be sent to Anthropic. The result is advisory: Codex or a human reviewer must reproduce every material finding against the original evidence.
+
+## Quality profiles
+
+- `deep` is the default for both skills and uses Opus with high effort.
+- `critical` uses Opus with xhigh effort for security, architecture, irreversible operations, incident/compliance work, and release gates. Select it with `--critical` or `--quality critical`.
+- `standard` uses Sonnet with high effort. It is a deliberate lower-cost option, not a fallback. It requires `--quality standard --acknowledge-standard-quality`; skill-driven runs require the user to authorize and be told about the Sonnet substitution first.
+
+The public runner does not accept arbitrary model or effort overrides and never retries with another model. It names every Claude session deterministically to suppress auxiliary title generation, verifies the initialized and answering model from verbose stream events, and fails without publishing a result if the observed family differs or any auxiliary model is used.
+
+Profiles intentionally use Anthropic's moving `opus` and `sonnet` aliases so new compatible model releases can be adopted without freezing the plugin to an older model ID. Every receipt records the fully resolved answering model and Claude Code version for auditability.
 
 ## Use the runner directly
 
@@ -86,6 +96,15 @@ python3 "$RUNNER" pr-review \
   --source-label "staged diff at commit abc123"
 ```
 
+Explicit standard Sonnet advisory:
+
+```bash
+python3 "$RUNNER" advisory \
+  --question-file /absolute/path/to/question.md \
+  --quality standard \
+  --acknowledge-standard-quality
+```
+
 The runner writes one compact JSON summary to stdout and diagnostics to stderr. Stable non-zero exit codes distinguish invalid input, missing dependencies, authentication failure, model failure, timeout, invalid structured output, GitHub read failure, and internal error.
 
 ## Data flow and artifacts
@@ -106,6 +125,8 @@ By default, runs are stored under `.codex/amanerp-second-opinion/runs/` in the c
 - `report.md` — deterministic human-readable rendering;
 - `receipt.json` — versions, revisions, hashes, limits, controls, outcome, and safe usage metadata;
 - `stderr.log` — redacted child-process diagnostics.
+
+On a non-zero Claude exit, `claude-failure.json` records a bounded, redacted event summary without retaining the raw failed stream. Receipt schema 2 distinguishes the requested family, observed answering model, auxiliary models, and per-model role/token/cost usage. The former `resolved_models` field remains only as a deprecated compatibility alias.
 
 Run files use owner-only permissions where supported. Input hashes prove identity, not content; preserve an approved source snapshot separately when content-level auditability is required.
 

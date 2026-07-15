@@ -18,7 +18,9 @@ REQUIRED_FLAGS = [
     "--tools",
     "--no-chrome",
     "--no-session-persistence",
+    "--name",
     "--output-format",
+    "--verbose",
     "--json-schema",
     "--max-turns",
     "--max-budget-usd",
@@ -117,7 +119,7 @@ if args == ["--version"]:
     if forced_stdout:
         sys.stdout.write("x" * forced_stdout)
         raise SystemExit(0)
-    print(control.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    print(control.get("FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"))
     raise SystemExit(0)
 
 if args == ["--help"]:
@@ -132,7 +134,7 @@ if args == ["--max-turns", "1", "--version"]:
     if control.get("FAKE_CLAUDE_MAX_TURNS", "present") != "present":
         print("error: unknown option '--max-turns'", file=sys.stderr)
         raise SystemExit(1)
-    print(control.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    print(control.get("FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"))
     raise SystemExit(0)
 
 if args == ["auth", "status", "--json"]:
@@ -157,9 +159,6 @@ if forced_stdout:
     raise SystemExit(0)
 if mode == "timeout":
     time.sleep(10)
-if mode == "error":
-    print("token=very-secret-value", file=sys.stderr)
-    raise SystemExit(23)
 if mode == "malformed":
     print("not-json")
     raise SystemExit(0)
@@ -171,6 +170,64 @@ if mode == "extra-property":
     result["unexpected"] = "must fail"
 if mode == "negative-line":
     result["findings"][0]["line"] = -1
+requested_model = args[args.index("--model") + 1]
+primary_model = control.get(
+    "FAKE_CLAUDE_PRIMARY_MODEL",
+    "claude-opus-4-8" if requested_model == "opus" else "claude-sonnet-4-6",
+)
+session_id = "00000000-0000-4000-8000-000000000001"
+if mode != "missing-init":
+    print(json.dumps({
+        "type": "system",
+        "subtype": "init",
+        "session_id": session_id,
+        "model": primary_model,
+        "claude_code_version": control.get(
+            "FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"
+        ).split()[0],
+    }))
+if mode != "missing-assistant":
+    print(json.dumps({
+        "type": "assistant",
+        "session_id": session_id,
+        "message": {
+            "model": primary_model,
+            "type": "message",
+            "role": "assistant",
+            "content": [],
+        },
+    }))
+if mode == "error":
+    print(json.dumps({
+        "type": "result",
+        "subtype": "error_during_execution",
+        "is_error": True,
+        "session_id": session_id,
+        "result": "provider token=very-secret-value failed",
+        "modelUsage": {primary_model: {"inputTokens": 4, "outputTokens": 1}},
+    }))
+    print("token=very-secret-value", file=sys.stderr)
+    raise SystemExit(23)
+model_usage = {
+    primary_model: {
+        "inputTokens": 10,
+        "outputTokens": 20,
+        "cacheReadInputTokens": 5,
+        "cacheCreationInputTokens": 3,
+        "costUSD": 0.01,
+    }
+}
+auxiliary_model = control.get("FAKE_CLAUDE_AUX_MODEL")
+if auxiliary_model:
+    model_usage[auxiliary_model] = {
+        "inputTokens": 10,
+        "outputTokens": 2,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "costUSD": 0.001,
+    }
+if mode == "invalid-model-usage":
+    model_usage[primary_model]["costUSD"] = "0.01"
 envelope = {
     "type": "result",
     "subtype": "success",
@@ -181,7 +238,7 @@ envelope = {
     "total_cost_usd": 0.01,
     "session_id": "00000000-0000-4000-8000-000000000001",
     "structured_output": result,
-    "modelUsage": {"fake-model": {"inputTokens": 10, "outputTokens": 20}},
+    "modelUsage": model_usage,
 }
 if mode == "no-structured-output":
     envelope.pop("structured_output")
@@ -193,7 +250,8 @@ if mode == "missing-turn-usage":
     envelope.pop("num_turns")
 if mode == "string-cost-usage":
     envelope["total_cost_usd"] = "0.01"
-print(json.dumps(envelope))
+if mode != "missing-result":
+    print(json.dumps(envelope))
 """
 )
 

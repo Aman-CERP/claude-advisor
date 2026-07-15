@@ -21,7 +21,7 @@
       "expected_result_shape": [
         "A compact JSON stdout summary containing run_dir, result_path, report_path, and receipt_path",
         "A schema-valid result with facts, assumptions, options, material risks, recommendation, open questions, and validation steps",
-        "A local receipt with outcome success and true safe_mode, tools_disabled, chrome_disabled, and session_persistence_disabled controls"
+        "A local receipt with outcome success, quality_profile deep, an Opus primary_model_observed, no auxiliary model, and true safe_mode, tools_disabled, chrome_disabled, and session_persistence_disabled controls"
       ]
     },
     {
@@ -43,7 +43,8 @@
       "expected_result_shape": [
         "A schema-valid advisory result",
         "Explicit assumptions and validation steps",
-        "No claim that the external model made or authorized the final decision"
+        "No claim that the external model made or authorized the final decision",
+        "A deep-profile receipt identifying Opus as the answering model and no auxiliary model"
       ]
     },
     {
@@ -65,7 +66,7 @@
       ],
       "expected_result_shape": [
         "A schema-valid verdict and ordered findings",
-        "A receipt containing the supplied-diff SHA-256",
+        "A receipt containing the supplied-diff SHA-256 and a verified Opus answering model",
         "No GitHub mutation or working-tree edit"
       ]
     },
@@ -89,7 +90,7 @@
       ],
       "expected_result_shape": [
         "A schema-valid PR review",
-        "A receipt containing repository, PR number, base OID, head OID, and exact diff hash",
+        "A receipt containing repository, PR number, base OID, head OID, exact diff hash, and verified Opus answering-model telemetry",
         "A final reconciliation that distinguishes reproduced findings from external opinion"
       ]
     },
@@ -112,7 +113,8 @@
       "expected_result_shape": [
         "A schema-valid result with status unable_to_advise or a low-confidence conditional recommendation",
         "Open questions and concrete validation steps",
-        "No invented production measurements or stakeholder constraints"
+        "No invented production measurements or stakeholder constraints",
+        "A deep-profile receipt identifying Opus as the answering model and no auxiliary model"
       ]
     }
   ],

@@ -16,6 +16,8 @@
 - [x] Deterministic ZIP and SHA-256 generation
 - [x] Local-only surface disclosure
 - [x] Non-affiliation and trademark notice
+- [x] Opus-first quality profiles with answering-model verification
+- [x] Explicit Sonnet acknowledgment and no automatic model fallback
 
 ## Human-controlled gates
 

@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Second Opinion by AmanERP",
     "shortDescription": "Independent advice and read-only PR reviews.",
-    "longDescription": "Obtain a bounded second opinion or evidence-oriented pull-request review through your separately installed Claude Code CLI, with no model tools, strict ceilings, and durable local provenance receipts. AmanERP is not affiliated with or endorsed by Anthropic.",
+    "longDescription": "Obtain a bounded second opinion or evidence-oriented pull-request review through your separately installed Claude Code CLI, with enforced Opus quality profiles, verified answering-model telemetry, no model tools, strict ceilings, and durable local provenance receipts. AmanERP is not affiliated with or endorsed by Anthropic.",
     "developerName": "AmanERP",
     "category": "Productivity",
     "capabilities": [

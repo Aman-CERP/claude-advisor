@@ -4,7 +4,7 @@
   "submission_type": "skills_only",
   "category": "Productivity",
   "short_description": "Independent advice and read-only PR reviews for local Codex workflows.",
-  "long_description": "Second Opinion by AmanERP gives Codex users a bounded independent advisory or adversarial pull-request review through their separately installed and authenticated Claude Code CLI. Every run is explicit, read-only, tool-free, resource-bounded, schema-validated, and recorded in local provenance artifacts. AmanERP does not proxy or receive prompts, diffs, credentials, or responses.",
+  "long_description": "Second Opinion by AmanERP gives Codex users a bounded independent advisory or adversarial pull-request review through their separately installed and authenticated Claude Code CLI. Deep and critical work uses a verified Opus answering model; Sonnet is an explicitly acknowledged standard option and never an automatic fallback. Every run is explicit, read-only, tool-free, resource-bounded, schema-validated, and recorded in local provenance artifacts. AmanERP does not proxy or receive prompts, diffs, credentials, or responses.",
   "website_url": "https://amanerp.com/developer-tools/second-opinion",
   "support_url": "https://amanerp.com/developer-tools/second-opinion/support",
   "privacy_policy_url": "https://amanerp.com/developer-tools/second-opinion/privacy",

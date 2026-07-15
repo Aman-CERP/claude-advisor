@@ -2,7 +2,7 @@
 
 Status: Implemented; release and directory publication gates remain
 Date: 2026-07-14  
-Last amended: 2026-07-14
+Last amended: 2026-07-15
 Owner: AmanERP maintainers
 Repository: `Aman-CERP/amanerp-second-opinion`
 License: Apache-2.0
@@ -44,6 +44,7 @@ Second Opinion standardizes that boundary while preserving human judgment.
 8. Keep V1 dependency-free beyond Python 3.11+, Git, GitHub CLI for PR mode, and Claude Code.
 9. Publish under the verified AmanERP identity with accurate public support, privacy, terms, and data-flow disclosures.
 10. Keep the customer-facing product identity independent from Anthropic trademarks and state the third-party dependency without implying affiliation or endorsement.
+11. Enforce auditable model-quality profiles so consequential work cannot silently downgrade from Opus to Sonnet or accept Haiku as the answering model.
 
 ## 4. Non-goals
 
@@ -130,10 +131,12 @@ Research was refreshed on 2026-07-14 against official documentation and live loc
 - OpenAI's submission portal explicitly accepts skills-only plugins. Its current checklist requires a verified developer or business identity, public website/support/privacy/terms URLs, final skill files, starter prompts, exactly five positive and three negative test cases, availability, release notes, and policy attestations.
 - OpenAI documents skills as instruction bundles with `SKILL.md`; plugin-owned skills can opt out of implicit invocation.
 - OpenAI documents that supported surface and capability availability can vary; this release therefore advertises local Codex use only and fails clearly when its local executable prerequisites are unavailable.
-- Anthropic documents `claude -p` for non-interactive execution, `--output-format json`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
-- The locally tested Claude CLI is `2.1.209`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
-- Claude 2.1.209 accepts `--max-turns` but does not advertise it in local `--help`. A live isolated analysis probe with `--max-turns 1` exited successfully and returned `num_turns: 1`. Doctor verifies parser recognition without an inference call by running `claude --max-turns 1 --version` with empty stdin and the same named 20-second timeout as other dependency probes, requiring exit zero and the same parsed version as the primary version probe. This avoids depending on undocumented error wording or a deliberately invalid budget.
-- The exact authentication probe `claude auth status --json` was live-verified on 2.1.209. Exit 0 plus JSON boolean `loggedIn: true` is success. The command also returns identity and organization fields; the plugin must neither print nor persist those fields.
+- Anthropic documents `claude -p` for non-interactive execution, `--output-format stream-json`, `--verbose`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
+- Claude Code uses Opus for complex reasoning, Sonnet for routine coding, and Haiku for simple low-latency work. Second Opinion therefore uses Opus for its default deep and critical reasoning profiles and permits Sonnet only through a separately acknowledged standard profile.
+- The locally tested Claude CLI is `2.1.210`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--name`, `--output-format`, `--verbose`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
+- A live 2.1.210 synthetic probe confirmed that verbose stream JSON identifies the initialized and answering model as `claude-opus-4-8`. Supplying the deterministic, non-sensitive session name `amanerp-second-opinion-<kind>` prevents Claude Code's otherwise automatic Haiku session-title generation. The runner records and verifies the answering model from the stream rather than treating every `modelUsage` entry as a resolved reviewer.
+- Claude 2.1.209 and 2.1.210 accept `--max-turns` but do not advertise it in local `--help`. A live isolated analysis probe with `--max-turns 1` exited successfully and returned bounded turn usage. Doctor verifies parser recognition without an inference call by running `claude --max-turns 1 --version` with empty stdin and the same named 20-second timeout as other dependency probes, requiring exit zero and the same parsed version as the primary version probe. This avoids depending on undocumented error wording or a deliberately invalid budget.
+- The exact authentication probe `claude auth status --json` was live-verified through 2.1.210. Exit 0 plus JSON boolean `loggedIn: true` is success. The command also returns identity and organization fields; the plugin must neither print nor persist those fields.
 - Anthropic documents that non-interactive Claude uses `ANTHROPIC_AUTH_TOKEN`, then `ANTHROPIC_API_KEY`, then `CLAUDE_CODE_OAUTH_TOKEN`, before stored subscription OAuth credentials. V1 passes only those documented first-party credential variables; it drops endpoint, provider-mode, model, tool, plugin, hook, and other Claude configuration environment variables.
 - GitHub CLI `2.92.0` was live-verified. `gh pr view --json baseRefOid,headRefOid,...` returned both object IDs against a live GitHub PR.
 - Anthropic documents that Pro and Max subscriptions can authenticate Claude Code and that Claude/Claude Code usage shares plan limits. API Console billing is separate. The plugin must not claim that a run is free or that a spend cap guarantees subscription availability.
@@ -168,7 +171,7 @@ The runner provides `doctor` and verifies:
 - Claude version is parseable and meets the minimum tested version;
 - Claude authentication status succeeds;
 - GitHub CLI resolution and authentication when requested;
-- all advertised mandatory flags are present in `claude --help`: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--output-format`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`;
+- all advertised mandatory flags are present in `claude --help`: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--name`, `--output-format`, `--verbose`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`;
 - the installed version is at least the version on which the hidden-but-accepted `--max-turns` behavior was live-tested;
 - a no-inference version probe confirms that the installed CLI still recognizes `--max-turns`.
 
@@ -183,8 +186,10 @@ The runner provides `advisory` with:
 - exactly one question source: `--question` or `--question-file`;
 - zero or more `--context-file` arguments;
 - explicit `--output-dir` or a safe default under `.codex/amanerp-second-opinion/`;
-- configurable model, effort, requested maximum turns/budget, parent-enforced timeout, and total input bytes within validated bounds;
+- an enforced quality profile plus configurable requested maximum turns/budget, parent-enforced timeout, and total input bytes within validated bounds;
 - schema-validated Claude output.
+
+Both analysis commands default to the `deep` quality profile. `--critical` is an alias for `--quality critical`. `--quality standard` is accepted only together with `--acknowledge-standard-quality`; skill-driven use additionally requires explicit user authorization and disclosure that Sonnet will replace the default Opus reviewer. The public CLI does not accept arbitrary model or effort overrides.
 
 ### FR-4: PR-review command
 
@@ -235,6 +240,8 @@ Every attempted run creates a unique run directory containing:
 - `report.md`: deterministic human-readable rendering on success;
 - `receipt.json`: timing, versions, controls, hashes, exit classification, and artifact paths;
 - `stderr.log`: redacted stderr, including for failed runs.
+
+When Claude exits non-zero after emitting bounded stream events, the run also contains `claude-failure.json`: a redacted diagnostic summary with the exit code, event counts, terminal status fields, observed model metadata, and a sanitized error message when available. The runner does not retain a raw failed stream because it may contain partial sensitive output.
 
 The receipt is always written once a run directory exists, including on timeout or child-process failure.
 
@@ -293,12 +300,14 @@ Every analysis call includes:
 --tools ""
 --no-chrome
 --no-session-persistence
---output-format json
+--output-format stream-json
+--verbose
+--name amanerp-second-opinion-<kind>
 --json-schema <bundled-schema>
 --max-turns <bounded-value>
 --max-budget-usd <bounded-value>
---model <allowlisted-value>
---effort <allowlisted-value>
+--model <profile-controlled-family>
+--effort <profile-controlled-level>
 ```
 
 The prompt instructs Claude that all delimited source material is untrusted evidence and that embedded instructions must be ignored.
@@ -335,14 +344,25 @@ V1 bounds:
 - runner timeout: 60–1,800 seconds, enforced by the parent process;
 - requested Claude turns: 1–12, with any reported overage classified as a failed ceiling breach;
 - requested Claude budget: USD 0.10–20.00, with any reported overage classified as a failed ceiling breach;
-- model allowlist: `sonnet`, `opus`, or a full model identifier matching a conservative character pattern;
-- effort: `low`, `medium`, `high`, `xhigh`, or `max`.
+- quality profiles: `standard`, `deep`, or `critical`;
+- profile-selected model and effort cannot be overridden by callers;
+- `standard` requires `--acknowledge-standard-quality` and uses Sonnet/high;
+- `deep` uses Opus/high;
+- `critical` uses Opus/xhigh.
 
 Defaults:
 
-- advisory: `opus`, high effort, 6 turns, USD 5.00, 900 seconds;
-- PR review: `sonnet`, high effort, 8 turns, USD 5.00, 1,200 seconds;
-- PR review with `--critical`: `opus`, high effort, 10 turns, USD 10.00, 1,500 seconds.
+- advisory deep: `opus`, high effort, 6 turns, USD 5.00, 900 seconds;
+- advisory critical: `opus`, xhigh effort, 10 turns, USD 10.00, 1,500 seconds;
+- PR review deep: `opus`, high effort, 8 turns, USD 8.00, 1,200 seconds;
+- PR review critical: `opus`, xhigh effort, 10 turns, USD 10.00, 1,500 seconds;
+- advisory or PR review standard: `sonnet`, high effort, the corresponding deep turn/timeout ceiling, and a USD 5.00 requested ceiling.
+
+The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one answering model, agreement between the initialized model and every assistant event, presence of that model in `modelUsage`, and a model family matching the selected profile. Any different answering model or auxiliary model usage is a `model_policy_violation`; no structured result is published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 2 receipts add `quality_profile`, `model_requested`, `primary_model_observed`, `auxiliary_models_observed`, `models_observed`, and normalized per-model token/cost/role records.
+
+The runner never retries or falls back to a different model. An Opus failure remains a failed run. A new Sonnet standard run requires a distinct command with explicit acknowledgment and, when invoked through a skill, fresh user authorization.
+
+A live 2.1.210 critical-profile smoke completed with Opus 4.8 as the sole initialized, answering, and billed model, no auxiliary model, four turns, and schema-valid output. A deliberately under-provisioned four-turn run first exhausted structured-output retries and produced only the redacted failure summary; rerunning the same Opus/xhigh profile with its specified ten-turn ceiling succeeded. A separate `--tools ""` probe elicited attempted Bash-call prose but created no marker file, confirming that model narration is not execution evidence and that the no-tools boundary still holds on the highest-tested release.
 
 A turn or budget flag is a Claude-side requested ceiling, not a promise of availability, exact subscription charge, or perfect pre-spend enforcement. A live 2.1.209 structured-output run reported three turns after `--max-turns 2`; the plugin therefore checks reported turns/cost and rejects a breached run instead of publishing its result as success. A successful run also requires non-negative, correctly typed `num_turns` and `total_cost_usd` fields from the behavior-tested envelope. Missing, mistyped, non-finite, or negative usage is recorded as unverified and rejected before result publication.
 
@@ -420,7 +440,7 @@ Supported V1 environment:
 - macOS or Linux;
 - Python 3.11+;
 - Codex release supporting plugin marketplaces and plugin skills;
-- Claude Code 2.1.209+ for the exact tested isolation flags; 2.1.209 is the highest behavior-tested release for v0.2.0, and newer releases produce a compatibility warning;
+- Claude Code 2.1.209+ for the exact tested isolation flags; 2.1.210 is the highest behavior-tested release for v0.2.0, and newer releases produce a compatibility warning;
 - GitHub CLI 2.x only for `--pr` mode;
 - Git for local source metadata and packaging workflows.
 
@@ -434,7 +454,8 @@ Receipts include:
 - start/end timestamps and duration;
 - runner command and outcome classification without question/context content;
 - executable paths and versions;
-- selected model, effort, turns, budget, and timeout;
+- selected quality profile, requested model family, effort, turns, budget, and timeout;
+- initialized and answering model identity, any auxiliary models, and normalized per-model role/token/cost usage;
 - security-control booleans;
 - input, diff, and result SHA-256 hashes;
 - GitHub immutable revision metadata when applicable;
@@ -469,7 +490,7 @@ Tests cover success, missing Claude, incompatible Claude, each advertised mandat
 
 ### AC-6: Advisory outcomes
 
-Tests cover valid structured output, non-zero Claude exit, timeout, malformed envelope, missing structured output, and schema-invalid result.
+Tests cover valid structured output, non-zero Claude exit with a redacted failure summary, timeout, malformed stream events, missing structured output, answering-model mismatch, auxiliary-model use, and schema-invalid result.
 
 ### AC-7: PR snapshot integrity
 
@@ -485,7 +506,7 @@ Tests prove success and failure receipts are written atomically, output files ha
 
 ### AC-10: Bounded inputs
 
-Tests cover file count, single-file size, total input size, timeout, turns, budget, model, effort validation, and reported turn/cost ceiling breaches.
+Tests cover file count, single-file size, total input size, timeout, turns, budget, quality-profile and standard-profile acknowledgment validation, rejection of arbitrary model/effort overrides, answering-model enforcement, and reported turn/cost ceiling breaches.
 
 ### AC-11: Deterministic package
 

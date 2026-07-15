@@ -19,6 +19,10 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Renamed the explicit skills to `$independent-advisory` and `$independent-pr-review`.
 - Moved default artifacts to `.codex/amanerp-second-opinion/runs/` and renamed the runner to `second_opinion.py`.
 - Added an explicit Anthropic non-affiliation notice and surface-availability disclosure.
+- Replaced arbitrary model/effort overrides with auditable `standard`, `deep`, and `critical` quality profiles. Both skills now default to Opus/high, critical work uses Opus/xhigh, and Sonnet requires an explicitly acknowledged standard run.
+- Switched analysis capture to verified verbose stream JSON while retaining the compact terminal response artifact. Receipts now distinguish requested, answering, and auxiliary models with normalized per-model usage.
+- Added deterministic session names to suppress Claude Code's auxiliary Haiku title-generation call and fail closed on any unapproved answering or auxiliary model.
+- Added redacted `claude-failure.json` diagnostics for non-zero Claude exits and prohibited automatic model fallback after failure.
 
 ### Migration
 

@@ -24,8 +24,9 @@ For changes to the runner:
 1. Add a failing contract test.
 2. Implement the smallest safe behavior.
 3. Exercise both success and failure receipts.
-4. Inspect subprocess argument arrays and child environment handling.
-5. Update the specification and README if operator-visible behavior changes.
+4. For model-policy changes, prove profile selection, observed answering-model validation, auxiliary-model rejection, and no fallback with the fake-Claude harness.
+5. Inspect subprocess argument arrays and child environment handling.
+6. Update the specification and README if operator-visible behavior changes.
 
 Pull requests should explain the threat boundary affected, tests run, data-handling impact, and rollback. Report findings rather than style preferences during review.
 

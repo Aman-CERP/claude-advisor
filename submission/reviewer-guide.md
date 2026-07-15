@@ -6,7 +6,7 @@ Second Opinion by AmanERP is a skills-only plugin for local Codex workflows. It 
 
 - Local Codex on macOS or Linux
 - Python 3.11 or newer
-- Claude Code 2.1.209 or newer for optional live inference
+- Claude Code 2.1.209 or newer for optional live inference; 2.1.210 is the highest behavior-tested release
 - GitHub CLI 2.x only for the public-PR test
 
 The plugin is not functional in ChatGPT web, Codex cloud, mobile, or Windows-native environments because those surfaces cannot satisfy its documented local-process contract.
@@ -21,7 +21,7 @@ make package
 make package-repro-check
 ```
 
-The test harness supplies fake `claude` and `gh` executables. It performs no inference, needs no account, and verifies command isolation, bounded subprocess behavior, secret screening, schema validation, receipts, public listing metadata, exact submission test counts, and deterministic packaging.
+The test harness supplies fake `claude` and `gh` executables. It performs no inference, needs no account, and verifies command isolation, bounded subprocess behavior, secret screening, schema validation, quality-profile enforcement, actual answering-model verification, no automatic fallback, redacted failure evidence, receipts, public listing metadata, exact submission test counts, and deterministic packaging.
 
 Validate the packaged plugin with OpenAI's current local validators:
 
@@ -42,7 +42,9 @@ Use only the reviewer's own Claude Code account and applicable Anthropic terms. 
 2. Run `make doctor`.
 3. Run positive cases P1, P3, and P4 from `test-cases.json`.
 4. Inspect `report.md`, `result.json`, and `receipt.json` in the printed run directory.
-5. Confirm the receipt records read-only isolation controls and the expected source hash or PR object IDs.
+5. Confirm the receipt records read-only isolation controls, the expected source hash or PR object IDs, an Opus `primary_model_observed` for deep/critical cases, and no auxiliary model.
+
+The default `deep` profile uses Opus/high and `--critical` uses Opus/xhigh. Sonnet/high is available only with `--quality standard --acknowledge-standard-quality`; it must never be used as an automatic retry after an Opus failure.
 
 Do not include private repository content, personal data, or credentials in reviewer prompts. The supplied fixtures are synthetic or public.
 

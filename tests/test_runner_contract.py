@@ -125,6 +125,20 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(
                 analysis["args"][analysis["args"].index("--tools") + 1], ""
             )
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--output-format") + 1],
+                "stream-json",
+            )
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--name") + 1],
+                "amanerp-second-opinion-advisory",
+            )
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--model") + 1], "opus"
+            )
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--effort") + 1], "high"
+            )
             self.assertNotIn("--dangerously-skip-permissions", analysis["args"])
             self.assertEqual(
                 analysis["env"]["ANTHROPIC_API_KEY"], "preserve-this-auth-value"
@@ -139,6 +153,153 @@ class AdvisoryTests(unittest.TestCase):
             self.assertTrue(receipt["controls"]["safe_mode"])
             self.assertTrue(receipt["controls"]["tools_disabled"])
             self.assertEqual(receipt["outcome"], "success")
+            self.assertEqual(receipt["schema_version"], "2")
+            self.assertEqual(receipt["claude"]["quality_profile"], "deep")
+            self.assertEqual(receipt["claude"]["model_requested"], "opus")
+            self.assertEqual(
+                receipt["claude"]["primary_model_observed"], "claude-opus-4-8"
+            )
+            self.assertEqual(receipt["claude"]["auxiliary_models_observed"], [])
+            self.assertEqual(
+                receipt["claude"]["models_observed"], ["claude-opus-4-8"]
+            )
+            self.assertEqual(
+                receipt["claude"]["resolved_models"], ["claude-opus-4-8"]
+            )
+            self.assertEqual(receipt["claude"]["model_usage"][0]["role"], "primary")
+            self.assertEqual(receipt["claude"]["model_usage"][0]["cost_usd"], 0.01)
+
+    def test_standard_quality_requires_acknowledgment_and_uses_sonnet(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            rejected = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--quality",
+                    "standard",
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(rejected.returncode, 2, rejected.stderr)
+            self.assertIn("--acknowledge-standard-quality", rejected.stderr)
+            if claude_log.exists():
+                self.assertFalse(
+                    any("--print" in call["args"] for call in read_jsonl(claude_log))
+                )
+
+            accepted = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--quality",
+                    "standard",
+                    "--acknowledge-standard-quality",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            analysis = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ][-1]
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--model") + 1], "sonnet"
+            )
+            receipt = json.loads(
+                (Path(stdout_json(accepted)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["claude"]["quality_profile"], "standard")
+            self.assertTrue(receipt["claude"]["standard_quality_acknowledged"])
+            self.assertEqual(
+                receipt["claude"]["primary_model_observed"], "claude-sonnet-4-6"
+            )
+
+    def test_critical_quality_is_opus_xhigh(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            analysis = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ][-1]
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--model") + 1], "opus"
+            )
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--effort") + 1], "xhigh"
+            )
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["claude"]["quality_profile"], "critical")
+
+    def test_advisory_rejects_model_mismatch_and_auxiliary_model_usage(self) -> None:
+        for variable, value in (
+            ("FAKE_CLAUDE_PRIMARY_MODEL", "claude-sonnet-4-6"),
+            ("FAKE_CLAUDE_AUX_MODEL", "claude-haiku-4-5-20251001"),
+        ):
+            with self.subTest(variable=variable), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                env, _, _ = fake_environment(root)
+                env[variable] = value
+                completed = run_cli(
+                    [
+                        "advisory",
+                        "--question",
+                        "Choose A or B",
+                        "--output-dir",
+                        str(root / "runs"),
+                    ],
+                    cwd=root,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, 5, completed.stderr)
+                run_dir = Path(stdout_json(completed)["run_dir"])
+                receipt = json.loads((run_dir / "receipt.json").read_text())
+                self.assertEqual(receipt["outcome"], "model_policy_violation")
+                self.assertFalse((run_dir / "result.json").exists())
+
+    def test_advisory_rejects_unverifiable_per_model_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "invalid-model-usage"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "model_policy_violation")
+            self.assertFalse(receipt["claude"]["model_policy_verified"])
+            self.assertFalse((run_dir / "result.json").exists())
 
     def test_advisory_rejects_schema_extra_property_and_invalid_enum(self) -> None:
         for mode in ("extra-property", "invalid-enum"):
@@ -189,6 +350,35 @@ class AdvisoryTests(unittest.TestCase):
                 )
                 self.assertEqual(receipt["outcome"], "invalid_result")
 
+    def test_advisory_requires_terminal_result_and_verifiable_model_events(self) -> None:
+        for mode, code, outcome in (
+            ("missing-result", 7, "invalid_result"),
+            ("missing-init", 5, "model_policy_violation"),
+            ("missing-assistant", 5, "model_policy_violation"),
+        ):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                env, _, _ = fake_environment(root)
+                env["FAKE_CLAUDE_MODE"] = mode
+                completed = run_cli(
+                    [
+                        "advisory",
+                        "--question",
+                        "Choose A or B",
+                        "--output-dir",
+                        str(root / "runs"),
+                    ],
+                    cwd=root,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, code, completed.stderr)
+                receipt = json.loads(
+                    (
+                        Path(stdout_json(completed)["run_dir"]) / "receipt.json"
+                    ).read_text()
+                )
+                self.assertEqual(receipt["outcome"], outcome)
+
     def test_advisory_fails_closed_on_reported_ceiling_breach(self) -> None:
         for mode in ("turn-breach", "cost-breach"):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as raw:
@@ -238,7 +428,7 @@ class AdvisoryTests(unittest.TestCase):
     def test_advisory_child_failure_has_redacted_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
-            env, _, _ = fake_environment(root)
+            env, claude_log, _ = fake_environment(root)
             env["FAKE_CLAUDE_MODE"] = "error"
             completed = run_cli(
                 [
@@ -256,7 +446,26 @@ class AdvisoryTests(unittest.TestCase):
             run_dir = Path(summary["run_dir"])
             receipt = json.loads((run_dir / "receipt.json").read_text())
             self.assertEqual(receipt["outcome"], "claude_failed")
+            self.assertEqual(
+                len(
+                    [
+                        call
+                        for call in read_jsonl(claude_log)
+                        if "--print" in call["args"]
+                    ]
+                ),
+                1,
+            )
             self.assertNotIn("very-secret-value", (run_dir / "stderr.log").read_text())
+            failure_path = run_dir / "claude-failure.json"
+            self.assertTrue(failure_path.is_file())
+            self.assertEqual(stat.S_IMODE(failure_path.stat().st_mode), 0o600)
+            failure = json.loads(failure_path.read_text())
+            self.assertEqual(failure["exit_code"], 23)
+            self.assertNotIn("very-secret-value", json.dumps(failure))
+            self.assertEqual(
+                receipt["artifacts"]["claude_failure"], str(failure_path)
+            )
 
     def test_advisory_bounds_claude_stdout_before_json_parsing(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -320,6 +529,8 @@ class AdvisoryTests(unittest.TestCase):
                             "max_budget_usd": 0.1,
                             "model": "sonnet",
                             "effort": "low",
+                            "quality_profile": "standard",
+                            "standard_quality_acknowledged": True,
                         },
                         output_dir=str(root / "runs"),
                         sensitive_override=False,
@@ -365,7 +576,9 @@ class SecurityTests(unittest.TestCase):
             ["--timeout", "59"],
             ["--max-turns", "13"],
             ["--max-budget-usd", "0.01"],
-            ["--model", "sonnet;touch-bad"],
+            ["--model", "sonnet"],
+            ["--effort", "low"],
+            ["--acknowledge-standard-quality"],
         )
         for extra in cases:
             with self.subTest(extra=extra), tempfile.TemporaryDirectory() as raw:
@@ -542,6 +755,42 @@ class SecurityTests(unittest.TestCase):
 
 
 class PullRequestTests(unittest.TestCase):
+    def test_critical_pr_review_uses_opus_xhigh(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root, PR_RESULT)
+            completed = run_cli(
+                [
+                    "pr-review",
+                    "--pr",
+                    "42",
+                    "--repo",
+                    "example/project",
+                    "--critical",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            analysis = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ][-1]
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--model") + 1], "opus"
+            )
+            self.assertEqual(
+                analysis["args"][analysis["args"].index("--effort") + 1], "xhigh"
+            )
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["claude"]["quality_profile"], "critical")
+            self.assertEqual(
+                receipt["claude"]["primary_model_observed"], "claude-opus-4-8"
+            )
+
     def test_pr_review_hashes_exact_diff_and_rechecks_head(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -569,6 +818,8 @@ class PullRequestTests(unittest.TestCase):
                 " value = 1\n+value = 2\n"
             )
             self.assertEqual(receipt["source"]["head_oid"], "head-a")
+            self.assertEqual(receipt["claude"]["quality_profile"], "deep")
+            self.assertEqual(receipt["claude"]["model_requested"], "opus")
             self.assertEqual(
                 receipt["source"]["diff_sha256"],
                 hashlib.sha256(expected_diff.encode()).hexdigest(),
