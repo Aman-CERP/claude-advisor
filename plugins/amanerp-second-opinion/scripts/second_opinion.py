@@ -1285,6 +1285,7 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
     assistant_stop_reasons: dict[str, int] = {}
     structured_output_tool_attempts = 0
     correction_events = 0
+    previous_event_used_structured_output = False
     for line in text.splitlines():
         if not line.strip():
             continue
@@ -1312,6 +1313,7 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
             ):
                 subtype = "unknown"
             system_subtypes[subtype] = system_subtypes.get(subtype, 0) + 1
+        event_used_structured_output = False
         if event_type == "assistant" and isinstance(event.get("message"), dict):
             message = event["message"]
             stop_reason = message.get("stop_reason")
@@ -1323,15 +1325,18 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
                 )
             content = message.get("content")
             if isinstance(content, list):
-                structured_output_tool_attempts += sum(
+                event_structured_output_attempts = sum(
                     1
                     for block in content
                     if isinstance(block, dict)
                     and block.get("type") == "tool_use"
                     and block.get("name") == "StructuredOutput"
                 )
-        if event_type == "user":
+                structured_output_tool_attempts += event_structured_output_attempts
+                event_used_structured_output = event_structured_output_attempts > 0
+        if event_type == "user" and previous_event_used_structured_output:
             correction_events += 1
+        previous_event_used_structured_output = event_used_structured_output
 
     terminal = next(
         (event for event in reversed(events) if event.get("type") == "result"), None
@@ -1741,10 +1746,24 @@ def execute_claude(
                     for model in (initialized_models + assistant_models + usage_models)
                 )
             )
-            if not failure_model_policy_verified:
+            failure_model_policy_violation = any(
+                not model_matches_family(model, limits["model"])
+                for model in failure_summary["models_observed"]
+            )
+            if failure_model_policy_violation:
                 failure_outcome = "model_policy_violation"
                 failure_message = (
                     "Claude model usage violated the selected quality profile"
+                )
+            elif (
+                failure_outcome == "structured_output_retry_exhausted"
+                and attempt_number < limits["structured_output_attempts"]
+                and not failure_model_policy_verified
+            ):
+                failure_outcome = "retry_blocked_model_unverified"
+                failure_message = (
+                    "Claude retry was blocked because failed-attempt model usage "
+                    "could not be verified"
                 )
             attempt_record = {
                 "attempt": attempt_number,
@@ -1754,6 +1773,7 @@ def execute_claude(
                 "models_observed": failure_summary["models_observed"],
                 "model_usage": failure_summary["model_usage"],
                 "model_policy_verified": failure_model_policy_verified,
+                "model_policy_violation": failure_model_policy_violation,
             }
             receipt["claude"]["attempts"].append(attempt_record)
             receipt["claude"]["models_observed"] = failure_summary["models_observed"]

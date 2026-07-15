@@ -12,12 +12,14 @@ All notable changes are documented here. The project follows Semantic Versioning
 - An explicitly authorized two-attempt mode that retries only the same model after structured-output exhaustion, splits the aggregate budget, and preserves the aggregate parent timeout.
 - Regression coverage for the observed six-response/five-correction failure shape and decision questions that previously embedded a competing output contract.
 - Fail-closed failed-attempt model telemetry verification so an Opus retry cannot proceed after any observed downgrade or auxiliary-family use.
+- Distinct `retry_blocked_model_unverified` classification for incomplete failed-attempt telemetry, preserving `model_policy_violation` for observed off-family use only.
 
 ### Changed
 
 - Flattened the advisory schema to a stable closed envelope with one rich Markdown analysis field while preserving facts, options, controls, risks, estimate, and ADR reasoning requirements.
 - Clarified that the question is the bounded decision, context is evidence, and the bundled JSON Schema is the sole machine-output contract.
 - Bumped receipts to schema 3 with authorized attempts, attempts started, retry status, per-attempt budget, and safe attempt records.
+- Tightened correction diagnostics to count only user events immediately following a StructuredOutput tool attempt instead of every user stream event.
 
 ### Migration
 

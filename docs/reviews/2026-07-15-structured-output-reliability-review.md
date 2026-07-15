@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Decision review converged; final PR review pending
+Status: Initial PR findings fixed; final PR rerun pending
 
 ## Incident
 
@@ -68,6 +68,28 @@ the third.
 
 ## Agreement state
 
-Codex and Claude agree on the v0.2.1 architecture and the accepted hardening
-changes. Final merge agreement remains pending the immutable PR-head critical
-review and green CI.
+### Initial immutable-head PR review
+
+- PR: #3
+- Reviewed head: `1419bc529ef46cd621d075a431caf889f703ae31`
+- Diff SHA-256: `6e4faf85efdaadf54db530d13d1dcb8fb2dd7922e7342c14c934a0ada7ffcefa`
+- Run: `20260715T071943Z-pr-review-0cb81d36`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 2 / USD 1.196645
+
+Claude reported one medium and one low finding:
+
+1. Accepted (medium): incomplete non-zero-exit telemetry was being relabeled as
+   `model_policy_violation`, overloading a security-relevant outcome and blocking
+   an authorized retry. Actual observed off-family use now remains
+   `model_policy_violation`; incomplete telemetry preserves an ordinary failure or
+   blocks an eligible retry as `retry_blocked_model_unverified`. Regression tests
+   cover both paths.
+2. Accepted (low): every user stream event was counted as a correction. The
+   diagnostic now counts only a user event immediately following an assistant
+   StructuredOutput tool attempt, with a test that excludes unrelated user events.
+
+Codex and Claude agree on the architecture and both initial PR findings are fixed.
+Final merge agreement remains pending the new immutable-head critical rerun and
+green CI.

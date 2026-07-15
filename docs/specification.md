@@ -280,7 +280,7 @@ Every attempted run creates a unique run directory containing:
 - `receipt.json`: timing, versions, controls, hashes, exit classification, and artifact paths;
 - `stderr.log`: redacted stderr, including for failed runs.
 
-When Claude exits non-zero after emitting bounded stream events, the run also contains `claude-failure.json`: a redacted diagnostic summary with the exit code, event and safe subtype counts, structured-output tool-attempt count, correction-event count, terminal status and usage fields, and observed model metadata. Terminal `result` prose is omitted for every failure because even a credential-redacted message may contain sensitive business analysis. Multi-attempt runs additionally retain an attempt-numbered failure summary for each failed attempt. The runner does not retain a raw failed stream or correction content because either may contain partial sensitive output.
+When Claude exits non-zero after emitting bounded stream events, the run also contains `claude-failure.json`: a redacted diagnostic summary with the exit code, event and safe subtype counts, structured-output tool-attempt count, candidate correction-event count (a user event immediately following a StructuredOutput tool attempt), terminal status and usage fields, and observed model metadata. Terminal `result` prose is omitted for every failure because even a credential-redacted message may contain sensitive business analysis. Multi-attempt runs additionally retain an attempt-numbered failure summary for each failed attempt. The runner does not retain a raw failed stream or correction content because either may contain partial sensitive output.
 
 The receipt is always written once a run directory exists, including on timeout or child-process failure.
 
@@ -406,6 +406,9 @@ The runner never silently retries and never falls back to a different model. By
 default an Opus failure remains a failed run. A same-model retry requires two
 explicit CLI controls, is limited to Claude's structured-output retry-exhausted
 terminal outcome, and remains inside aggregate budget and timeout ceilings. A
+failed attempt with observed off-family use produces `model_policy_violation`;
+incomplete model telemetry blocks the retry as
+`retry_blocked_model_unverified` without falsely claiming a downgrade. A
 new Sonnet standard run requires a distinct command with explicit acknowledgment
 and, when invoked through a skill, fresh user authorization.
 

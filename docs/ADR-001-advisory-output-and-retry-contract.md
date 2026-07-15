@@ -26,7 +26,9 @@ outer Claude run; it did not guarantee successful internal schema repair.
 4. A retry preserves model, effort, input, prompt, schema, no-tools isolation, and
    per-attempt turn ceiling. Initialization, assistant, and usage telemetry from
    the failed attempt must all verify the selected family before retry. There is
-   no model fallback.
+   no model fallback. Observed off-family use is a model-policy violation;
+   incomplete error telemetry blocks retry under a distinct unverified label and
+   must not be reported as proof of a downgrade.
 5. Timeout and budget are aggregate across attempts. The budget is divided evenly;
    reported first-attempt usage must be valid and within its slice before retry.
 6. Failed streams are never retained. Failure summaries omit terminal result prose
