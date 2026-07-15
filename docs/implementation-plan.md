@@ -84,7 +84,7 @@ This release preserves the v0.1 runtime trust boundary while replacing the publi
    and structured-output retries are never silent or cross-model.
 2. Add failing tests and a representative decision fixture for a Claude
    `error_max_structured_output_retries` terminal event, safe diagnostic counts,
-   competing output-format prose, retry authorization, budget splitting, one
+   competing output-format prose, retry authorization, remaining-budget accounting, one
    same-model retry, and no retry for unrelated errors.
 3. Flatten the advisory schema into a closed scalar/string-array envelope with a
    single rich Markdown analysis field. Add schema descriptions and update the

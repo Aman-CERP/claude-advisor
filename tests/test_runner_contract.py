@@ -806,7 +806,9 @@ class AdvisoryTests(unittest.TestCase):
                     any("--print" in call["args"] for call in read_jsonl(claude_log))
                 )
 
-    def test_authorized_retry_is_same_model_and_splits_aggregate_budget(self) -> None:
+    def test_authorized_retry_uses_same_model_and_remaining_aggregate_budget(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             env, claude_log, _ = fake_environment(root)
@@ -833,7 +835,8 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
             self.assertTrue(receipt["resource_limits"]["retry_triggered"])
             self.assertEqual(
-                receipt["resource_limits"]["per_attempt_budget_requested_usd"], 5.0
+                receipt["resource_limits"]["attempt_budgets_requested_usd"],
+                [10.0, 9.58],
             )
             self.assertEqual(len(receipt["claude"]["attempts"]), 2)
             self.assertEqual(
@@ -854,12 +857,110 @@ class AdvisoryTests(unittest.TestCase):
                 args = call["args"]
                 self.assertEqual(args[args.index("--model") + 1], "opus")
                 self.assertEqual(args[args.index("--effort") + 1], "xhigh")
-                self.assertEqual(args[args.index("--max-budget-usd") + 1], "5.00")
                 self.assertEqual(args[args.index("--max-turns") + 1], "10")
                 self.assertEqual(
                     args[args.index("--json-schema") + 1],
                     calls[0]["args"][calls[0]["args"].index("--json-schema") + 1],
                 )
+            self.assertEqual(
+                [
+                    call["args"][call["args"].index("--max-budget-usd") + 1]
+                    for call in calls
+                ],
+                ["10.00", "9.58"],
+            )
+
+    def test_two_attempt_authorization_does_not_starve_successful_first_attempt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_TOTAL_COST_USD"] = "6.0"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["claude"]["reported_cost_usd"], 6.0)
+            self.assertEqual(
+                receipt["resource_limits"]["attempt_budgets_requested_usd"],
+                [10.0],
+            )
+            analysis_call = next(
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            )
+            self.assertEqual(
+                analysis_call["args"][
+                    analysis_call["args"].index("--max-budget-usd") + 1
+                ],
+                "10.00",
+            )
+
+    def test_retry_is_preempted_when_reported_cost_leaves_no_usable_budget(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-once"
+            env["FAKE_CLAUDE_FAILURE_COST_USD"] = "0.45"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--max-budget-usd",
+                    "0.50",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                receipt["resource_limits"]["retry_preempted_reason"],
+                "insufficient_remaining_budget",
+            )
+            self.assertEqual(
+                receipt["resource_limits"]["attempt_budgets_requested_usd"],
+                [0.5],
+            )
+            self.assertEqual(
+                len(
+                    [
+                        call
+                        for call in read_jsonl(claude_log)
+                        if "--print" in call["args"]
+                    ]
+                ),
+                1,
+            )
 
     def test_two_structured_output_failures_are_both_audited(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -1128,7 +1229,6 @@ class AdvisoryTests(unittest.TestCase):
                             "standard_quality_acknowledged": True,
                             "structured_output_attempts": 1,
                             "retry_cost_acknowledged": False,
-                            "per_attempt_budget_usd": 0.1,
                         },
                         output_dir=str(root / "runs"),
                         sensitive_override=False,
@@ -1218,7 +1318,6 @@ class AdvisoryTests(unittest.TestCase):
                             "standard_quality_acknowledged": False,
                             "structured_output_attempts": 2,
                             "retry_cost_acknowledged": True,
-                            "per_attempt_budget_usd": 5.0,
                         },
                         output_dir=str(root / "runs"),
                         sensitive_override=False,
@@ -1314,7 +1413,6 @@ class AdvisoryTests(unittest.TestCase):
                             "standard_quality_acknowledged": False,
                             "structured_output_attempts": 2,
                             "retry_cost_acknowledged": True,
-                            "per_attempt_budget_usd": 5.0,
                         },
                         output_dir=str(root / "runs"),
                         sensitive_override=False,
@@ -1413,7 +1511,6 @@ class AdvisoryTests(unittest.TestCase):
                             "standard_quality_acknowledged": False,
                             "structured_output_attempts": 1,
                             "retry_cost_acknowledged": False,
-                            "per_attempt_budget_usd": 10.0,
                         },
                         output_dir=str(root / "runs"),
                         sensitive_override=False,

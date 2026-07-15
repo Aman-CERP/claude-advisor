@@ -40,8 +40,11 @@ under `output`, `response`, or `json`, making a root payload fail validation.
    no model fallback. Observed off-family use is a model-policy violation;
    incomplete error telemetry blocks retry under a distinct unverified label and
    must not be reported as proof of a downgrade.
-5. Timeout and budget are aggregate across attempts. The budget is divided evenly;
-   reported first-attempt usage must be valid and within its slice before retry.
+5. Timeout and budget are aggregate across attempts. Attempt one receives the full
+   aggregate ceiling. After an eligible failure, the retry receives only the
+   verified unused balance, rounded down to cents; reported first-attempt usage
+   must be valid and within the aggregate before retry. Less than USD 0.10 of
+   remaining balance preempts retry.
    A retry is recorded as triggered only when the second process starts; deadline
    expiry before that point is recorded as aggregate-timeout preemption.
 6. Failed streams are never retained. Failure summaries omit terminal result prose
@@ -62,8 +65,8 @@ under `output`, `response`, or `json`, making a root payload fail validation.
 - `result.json` is schema-breaking for downstream v0.2.0 consumers; the changelog
   and release notes provide the migration contract.
 - An identical retry can recover only transient/non-deterministic failure and may
-  spend the second budget slice without success.
-- Selecting two attempts halves the requested ceiling for each attempt. Current
-  critical live evidence used USD 1.045215 against a USD 5 per-attempt ceiling;
-  maintainers must continue to watch this margin.
+  spend the remaining aggregate balance without success.
+- Retry authorization does not reduce attempt one's ceiling. A high-cost failure
+  may leave too little balance for a second process, which is reported as a
+  preemption instead of silently exceeding the aggregate.
 - Receipt schema 3 makes retry authorization and execution auditable.

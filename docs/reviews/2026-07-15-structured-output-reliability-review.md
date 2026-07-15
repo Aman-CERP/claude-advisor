@@ -48,9 +48,10 @@ the third.
 2. Accepted: the advisory result shape is breaking for machine consumers. The
    changelog and submission release notes now contain an explicit migration
    contract, and ADR-001 records the decision.
-3. Accepted: identical replay can recover only transient failure and two-attempt
-   mode halves the requested ceiling per attempt. The advisory skill, README,
-   release notes, and ADR now disclose both caveats.
+3. Accepted, then strengthened after final-head review: identical replay can
+   recover only transient failure. The initial fixed half-budget design could
+   starve attempt one, so it now uses the verified remaining aggregate. The
+   skills, README, release notes, and ADR disclose the ledger and preemption rule.
 4. Accepted and strengthened: a failed attempt must verify initialization,
    assistant, and usage model telemetry before a retry. A regression test proves
    observed Haiku use blocks retry as `model_policy_violation`.
@@ -59,12 +60,13 @@ the third.
 6. Rejected as stale evidence gap: Claude did not receive the test files in its
    bounded advisory context and therefore said retry tests were unverified. The
    local suite contains explicit tests for acknowledgment, exact same-model
-   retry, unrelated-error no-retry, diagnostics, budget split, and failed-attempt
+   retry, unrelated-error no-retry, diagnostics, remaining-budget accounting, and failed-attempt
    downgrade rejection.
 7. Accepted from skill forward-testing: retry authorization must follow disclosure
-   of the exact aggregate and per-attempt requested ceilings. Both skills now list
-   profile-specific figures and reject generic rerun permission given without that
-   disclosure.
+   of the exact aggregate ledger and deterministic attempt-ceiling rule. Both
+   skills now list profile-specific aggregate figures, explain that retry receives
+   only verified unused balance, and reject generic rerun permission given without
+   that disclosure.
 
 ## Agreement state
 
@@ -210,6 +212,26 @@ repair loop. Both plugin schemas now intentionally require one root `output`
 property; the runner validates that provider-facing envelope and unwraps exactly
 one layer before persisting the unchanged consumer payload. Terminal `errors`
 are reduced to counts and fixed categories without retaining message text.
+
+### Sixth immutable-head PR review
+
+- Reviewed head: `90783ea023d17a4c477423de7bc57b6ad33881d2`
+- Diff SHA-256: `f0d0939e4bf4e38d804e97f452a14edc232a2d1209956d34c93f977e0ce6ae57`
+- Run: `20260715T082745Z-pr-review-9887ed90`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 2 / USD 1.41404
+- Result SHA-256: `45fc04783664a2c2d8c02b0834af23c6d49800d47d637ac08fba45153f6ddb87`
+
+The compatibility-envelope canary succeeded on the full 165,201-byte PR diff,
+closing the prior live-validation gap. Claude found no critical, high, or medium
+correctness/security defect and one low reliability footgun: fixed half-budget
+slices could make an otherwise-successful expensive first attempt fail merely
+because retry was authorized. Accepted and fixed. Attempt one now receives the
+full aggregate; an eligible retry receives the verified unused balance rounded
+down to cents, or is preempted below USD 0.10. Tests cover a USD 6 first-attempt
+success under a USD 10 two-attempt authorization, a USD 0.42 failure followed by
+a USD 9.58 retry ceiling, and insufficient-balance preemption.
 
 ## Final agreement
 

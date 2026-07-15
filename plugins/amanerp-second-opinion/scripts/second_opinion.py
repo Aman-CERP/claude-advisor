@@ -1040,7 +1040,6 @@ def validate_common_options(
         "standard_quality_acknowledged": standard_acknowledged,
         "structured_output_attempts": structured_output_attempts,
         "retry_cost_acknowledged": retry_cost_acknowledged,
-        "per_attempt_budget_usd": budget / structured_output_attempts,
     }
 
 
@@ -1625,7 +1624,8 @@ def execute_claude(
             "timeout_seconds": limits["timeout"],
             "max_turns": limits["max_turns"],
             "budget_requested_usd": limits["max_budget_usd"],
-            "per_attempt_budget_requested_usd": limits["per_attempt_budget_usd"],
+            "attempt_budget_strategy": "remaining_reported_aggregate",
+            "attempt_budgets_requested_usd": [],
             "structured_output_attempts_authorized": limits[
                 "structured_output_attempts"
             ],
@@ -1683,7 +1683,22 @@ def execute_claude(
                     "Claude analysis timed out",
                     outcome="timeout",
                 )
+            remaining_budget = limits["max_budget_usd"] - failed_reported_cost
+            attempt_budget = math.floor((remaining_budget * 100) + 1e-9) / 100
+            if attempt_budget < 0.10:
+                if attempt_number > 1:
+                    receipt["resource_limits"]["retry_preempted_reason"] = (
+                        "insufficient_remaining_budget"
+                    )
+                raise AdvisorError(
+                    EXIT_CLAUDE,
+                    "Claude retry has insufficient remaining aggregate budget",
+                    outcome="structured_output_retry_exhausted",
+                )
             receipt["resource_limits"]["attempts_started"] = attempt_number
+            receipt["resource_limits"]["attempt_budgets_requested_usd"].append(
+                attempt_budget
+            )
             if attempt_number > 1:
                 receipt["resource_limits"]["retry_triggered"] = True
             command = [
@@ -1704,7 +1719,7 @@ def execute_claude(
                 "--max-turns",
                 str(limits["max_turns"]),
                 "--max-budget-usd",
-                f"{limits['per_attempt_budget_usd']:.2f}",
+                f"{attempt_budget:.2f}",
                 "--model",
                 limits["model"],
                 "--effort",
@@ -1869,15 +1884,23 @@ def execute_claude(
                 valid_nonnegative_integer(failure_turns)
                 and valid_nonnegative_number(failure_cost)
                 and failure_turns <= limits["max_turns"]
-                and failure_cost <= limits["per_attempt_budget_usd"]
+                and failure_cost <= attempt_budget
+                and failed_reported_cost + failure_cost <= limits["max_budget_usd"]
             )
             if (
                 failure_outcome == "structured_output_retry_exhausted"
                 and attempt_number < limits["structured_output_attempts"]
                 and retry_usage_valid
             ):
-                failed_reported_cost += float(failure_cost)
-                continue
+                next_failed_cost = failed_reported_cost + float(failure_cost)
+                next_remaining = limits["max_budget_usd"] - next_failed_cost
+                next_attempt_budget = math.floor((next_remaining * 100) + 1e-9) / 100
+                if next_attempt_budget >= 0.10:
+                    failed_reported_cost = next_failed_cost
+                    continue
+                receipt["resource_limits"]["retry_preempted_reason"] = (
+                    "insufficient_remaining_budget"
+                )
 
             failure_path = run_dir / "claude-failure.json"
             atomic_write_json(failure_path, failure_summary)
@@ -1964,7 +1987,7 @@ def execute_claude(
                 "Claude exceeded the requested turn ceiling",
                 outcome="ceiling_breach",
             )
-        if reported_cost > limits["per_attempt_budget_usd"] or (
+        if reported_cost > attempt_budget or (
             failed_reported_cost + reported_cost > limits["max_budget_usd"]
         ):
             completed_attempt_record["outcome"] = "ceiling_breach"

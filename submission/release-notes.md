@@ -6,7 +6,7 @@ Version 0.2.1 hardens advisory reliability after real critical Opus runs exhaust
 
 The advisory `result.json` shape is intentionally breaking for machine consumers: the former nested facts, assumptions, options, recommendation, and open-questions structures are represented in Markdown `analysis`, with verdict, confidence, risks, change conditions, and validation steps remaining top-level. Update consumers before adopting v0.2.1.
 
-One attempt remains the default. A user may explicitly authorize two attempts with `--structured-output-attempts 2 --acknowledge-retry-cost`; only Claude's structured-output retry-exhausted outcome is eligible, and the second attempt preserves the exact model, effort, input, prompt, schema, tool isolation, and turn ceiling within aggregate time and budget limits. There is no cross-model fallback.
+One attempt remains the default. A user may explicitly authorize two attempts with `--structured-output-attempts 2 --acknowledge-retry-cost`; only Claude's structured-output retry-exhausted outcome is eligible, and the second attempt preserves the exact model, effort, input, prompt, schema, tool isolation, and turn ceiling within aggregate time and budget limits. Attempt one may use the aggregate ceiling; an eligible retry receives only the verified unused reported-cost balance and is skipped below USD 0.10. There is no cross-model fallback.
 
 This release preserves the v0.1 read-only runtime boundary and introduces a neutral AmanERP product identity, two explicit-only skills (`independent-advisory` and `independent-pr-review`), complete public legal/support metadata, production listing assets, reviewer fixtures, and the required five positive and three negative test cases.
 

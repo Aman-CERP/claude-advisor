@@ -409,7 +409,7 @@ Defaults:
 - PR review critical: `opus`, xhigh effort, 10 turns, USD 10.00, 1,500 seconds;
 - advisory or PR review standard: `sonnet`, high effort, the corresponding deep turn/timeout ceiling, and a USD 5.00 requested ceiling.
 
-The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one initialized identifier, exactly one answering identifier, a selected-profile family for both, and at least one `modelUsage` entry in that family. Fully resolved, moving-alias, or dated identifiers within the requested family are classified as primary; any Haiku/Sonnet/other-family use inside an Opus run (or other profile-family mismatch) is auxiliary and produces `model_policy_violation`, with no structured result published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 3 receipts record the requested/observed model fields, normalized per-model usage, authorized attempt count, attempts started, whether retry occurred, aggregate budget, and per-attempt requested budget.
+The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one initialized identifier, exactly one answering identifier, a selected-profile family for both, and at least one `modelUsage` entry in that family. Fully resolved, moving-alias, or dated identifiers within the requested family are classified as primary; any Haiku/Sonnet/other-family use inside an Opus run (or other profile-family mismatch) is auxiliary and produces `model_policy_violation`, with no structured result published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 3 receipts record the requested/observed model fields, normalized per-model usage, authorized attempt count, attempts started, whether retry occurred, the aggregate budget strategy, and the exact ceiling passed to each started attempt.
 
 The runner never silently retries and never falls back to a different model. By
 default an Opus failure remains a failed run. A same-model retry requires two
@@ -422,6 +422,14 @@ is marked triggered only after its process attempt actually starts; an aggregate
 deadline that expires first records `retry_preempted_reason` instead. A new
 Sonnet standard run requires a distinct command with explicit acknowledgment
 and, when invoked through a skill, fresh user authorization.
+
+Two-attempt authorization uses a remaining-reported-aggregate ledger rather than
+fixed slices. Attempt one receives the full aggregate requested ceiling. After an
+eligible failure with verified cost, the runner subtracts that cost, rounds the
+balance down to cents, and passes only that balance to attempt two. A balance
+below USD 0.10 preempts retry. Receipts record the strategy and exact ceiling
+passed to every started attempt. This prevents the recovery option from starving
+an otherwise-successful first analysis while preserving the aggregate gate.
 
 A live 2.1.210 critical-profile smoke completed with Opus 4.8 as the sole initialized, answering, and billed model, no auxiliary model, four turns, and schema-valid output. A later real advisory reached Claude's internal structured-output retry ceiling after six assistant responses and five correction events despite the plugin's ten-turn ceiling; the plugin correctly failed closed. A subsequent full-PR dogfood run on head `347a460` repeated the terminal after five StructuredOutput calls, five corrections, six turns, and Opus-only usage. This proves that `--max-turns` is an outer per-attempt ceiling, not a guarantee that Claude's internal schema-repair loop will succeed, and that payload flattening alone does not mitigate the current provider wrapper defect. Version 0.2.1 therefore flattens the advisory payload, places both payloads in one required `output` compatibility envelope, makes the output-contract boundary explicit, classifies this terminal outcome precisely, and offers only an explicitly authorized same-model retry. A separate `--tools ""` probe elicited attempted Bash-call prose but created no marker file, confirming that model narration is not execution evidence and that the no-tools boundary still holds on the highest-tested release.
 
@@ -571,7 +579,7 @@ Tests prove success and failure receipts are written atomically, output files ha
 
 ### AC-10: Bounded inputs
 
-Tests cover file count, single-file size, total input size, timeout, turns, budget, quality-profile and standard-profile acknowledgment validation, structured-output attempt and retry-cost acknowledgment validation, aggregate budget splitting, rejection of arbitrary model/effort overrides, answering-model enforcement, and reported turn/cost ceiling breaches.
+Tests cover file count, single-file size, total input size, timeout, turns, budget, quality-profile and standard-profile acknowledgment validation, structured-output attempt and retry-cost acknowledgment validation, the remaining-aggregate budget ledger, no first-attempt starvation, insufficient-balance retry preemption, rejection of arbitrary model/effort overrides, answering-model enforcement, and reported turn/cost ceiling breaches.
 
 ### AC-11: Deterministic package
 

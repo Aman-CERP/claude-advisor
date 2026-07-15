@@ -9,7 +9,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 ### Added
 
 - Precise `structured_output_retry_exhausted` failure classification with bounded event, subtype, correction, tool-attempt, usage, and model diagnostics that retain no partial structured response.
-- An explicitly authorized two-attempt mode that retries only the same model after structured-output exhaustion, splits the aggregate budget, and preserves the aggregate parent timeout.
+- An explicitly authorized two-attempt mode that retries only the same model after structured-output exhaustion, gives each started attempt only the remaining reported aggregate budget, and preserves the aggregate parent timeout.
 - Regression coverage for the observed six-response/five-correction failure shape and decision questions that previously embedded a competing output contract.
 - Fail-closed failed-attempt model telemetry verification so an Opus retry cannot proceed after any observed downgrade or auxiliary-family use.
 - Distinct `retry_blocked_model_unverified` classification for incomplete failed-attempt telemetry, preserving `model_policy_violation` for observed off-family use only.
@@ -27,11 +27,12 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Added an outer internal-error finalizer so unexpected telemetry/bookkeeping or artifact-I/O exceptions cannot leave a started attempt absent or pending.
 - Wrapped both structured-output contracts in one required `output` compatibility property, then locally validated and removed that provider-facing envelope before publishing the stable result payload.
 - Added content-free terminal structured-output error counts and categories; raw validation messages remain omitted.
+- Replaced fixed half-budget slices with a remaining-aggregate ledger so retry authorization cannot starve an otherwise-successful first attempt; retry is preempted when the verified remaining balance is below USD 0.10.
 
 ### Migration
 
 - Advisory `result.json` is intentionally schema-breaking: nested `facts`, `assumptions`, `options`, `recommendation`, and `open_questions` move into the Markdown `analysis` field, with top-level `verdict`, `confidence`, and `conditions_that_change_it`. Consumers must update before reading v0.2.1 advisory results.
-- Two-attempt mode replays an identical request and halves the configured aggregate budget per attempt; it is intended only for explicitly authorized recovery from a transient structured-output failure.
+- Two-attempt mode replays identical decision content. Attempt one may use the full aggregate ceiling; after an eligible failure, attempt two receives only the verified unused balance and is skipped when less than USD 0.10 remains.
 
 ## [0.2.0] - 2026-07-14
 

@@ -212,6 +212,7 @@ if mode == "structured-retry-exhausted" or (
     mode in ("structured-retry-once", "structured-retry-then-auxiliary")
     and analysis_call_number == 1
 ):
+    failure_cost_usd = float(control.get("FAKE_CLAUDE_FAILURE_COST_USD", "0.42"))
     for index in range(6):
         print(json.dumps({
             "type": "assistant",
@@ -256,25 +257,26 @@ if mode == "structured-retry-exhausted" or (
         "duration_ms": 1200,
         "duration_api_ms": 1100,
         "num_turns": 6,
-        "total_cost_usd": 0.42,
+        "total_cost_usd": failure_cost_usd,
         "session_id": session_id,
         "result": "private partial response must not be retained",
         "modelUsage": {
             usage_model: {
                 "inputTokens": 40,
                 "outputTokens": 60,
-                "costUSD": 0.42,
+                "costUSD": failure_cost_usd,
             }
         },
     }))
     raise SystemExit(1)
+reported_cost_usd = float(control.get("FAKE_CLAUDE_TOTAL_COST_USD", "0.01"))
 model_usage = {
     usage_model: {
         "inputTokens": 10,
         "outputTokens": 20,
         "cacheReadInputTokens": 5,
         "cacheCreationInputTokens": 3,
-        "costUSD": 0.01,
+        "costUSD": reported_cost_usd,
     }
 }
 auxiliary_model = control.get("FAKE_CLAUDE_AUX_MODEL")
@@ -295,7 +297,7 @@ envelope = {
     "duration_ms": 12,
     "duration_api_ms": 10,
     "num_turns": 2,
-    "total_cost_usd": 0.01,
+    "total_cost_usd": reported_cost_usd,
     "session_id": "00000000-0000-4000-8000-000000000001",
     "structured_output": {"output": result},
     "modelUsage": model_usage,
