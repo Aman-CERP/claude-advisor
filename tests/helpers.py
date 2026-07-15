@@ -247,6 +247,11 @@ if mode == "structured-retry-exhausted" or (
         "type": "result",
         "subtype": "error_max_structured_output_retries",
         "terminal_reason": "structured_output_retry_exhausted",
+        "errors": [
+            "Output does not match required schema: root: must have required property 'output'",
+            "Output does not match required schema: root: must NOT have additional properties",
+            "private validation detail must not be retained",
+        ],
         "is_error": True,
         "duration_ms": 1200,
         "duration_api_ms": 1100,
@@ -292,7 +297,7 @@ envelope = {
     "num_turns": 2,
     "total_cost_usd": 0.01,
     "session_id": "00000000-0000-4000-8000-000000000001",
-    "structured_output": result,
+    "structured_output": {"output": result},
     "modelUsage": model_usage,
 }
 if mode == "no-structured-output":

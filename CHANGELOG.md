@@ -25,6 +25,8 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Added a recovered-attempt regression proving the normal success-path model gate rejects a Haiku answering model after an Opus structured-output failure.
 - Completed the every-started-attempt invariant for exit-zero responses rejected by stream parsing, model policy, usage, ceiling, structured-output extraction, or local schema validation.
 - Added an outer internal-error finalizer so unexpected telemetry/bookkeeping or artifact-I/O exceptions cannot leave a started attempt absent or pending.
+- Wrapped both structured-output contracts in one required `output` compatibility property, then locally validated and removed that provider-facing envelope before publishing the stable result payload.
+- Added content-free terminal structured-output error counts and categories; raw validation messages remain omitted.
 
 ### Migration
 

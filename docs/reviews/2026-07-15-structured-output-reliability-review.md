@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Agreement achieved; no unresolved critical, high, medium, or low finding
+Status: Final dogfood failure reproduced; provider-wrapper mitigation under validation
 
 ## Incident
 
@@ -186,10 +186,34 @@ A fault-injection test makes model-telemetry collection raise after an attempt h
 started and proves the persisted record is finalized. Representative success and
 retry tests also assert `len(attempts) == attempts_started`.
 
+### Fifth immutable-head dogfood attempt
+
+- Reviewed head: `347a460a1d28c24efe1170a84c39071aaa7b22fe`
+- Diff SHA-256: `a04113305927387b5a971085417672491bc7fd1c291561c693a1f6575a92cc0a`
+- Run: `20260715T080932Z-pr-review-8892f417`
+- Outcome: `structured_output_retry_exhausted`
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 6 / USD 2.1308245
+- StructuredOutput attempts/corrections: 5 / 5
+
+This run produced no review and therefore cannot support merge agreement. It did
+prove that the failure classifier, Opus-only model gate, content-free diagnostic,
+and no-result fail-closed behavior work on the final head. It also falsified the
+earlier assumption that flattening the advisory payload plus an optional outer
+replay was sufficient for general reliability.
+
+Grounded follow-up found that Anthropic's Agent SDK uses a validate/re-prompt
+loop and recommends focused schemas. More importantly, Anthropic issue #502 is
+still open and documents intermittent extra root wrappers (`output`, `response`,
+and `json`) causing otherwise valid StructuredOutput calls to exhaust their
+repair loop. Both plugin schemas now intentionally require one root `output`
+property; the runner validates that provider-facing envelope and unwraps exactly
+one layer before persisting the unchanged consumer payload. Terminal `errors`
+are reduced to counts and fixed categories without retaining message text.
+
 ## Final agreement
 
-**AGREED — MERGE RECOMMENDED.** Across one critical design advisory, four
-immutable-head critical PR reviews, and one focused critical closure advisory,
-every finding was reproduced and fixed. No unresolved critical, high, medium, or
-low actionable finding remains. Merge still requires green CI on the final head;
-release and installation verification remain separate post-merge gates.
+**PENDING.** The fifth dogfood call did not return a usable review. Merge remains
+blocked until the compatibility-envelope change passes the full local/CI gates
+and a fresh immutable-head critical Claude review produces a validated result
+whose findings are independently dispositioned.

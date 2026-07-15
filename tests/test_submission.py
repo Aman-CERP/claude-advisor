@@ -16,8 +16,11 @@ class SubmissionPacketTests(unittest.TestCase):
             (PLUGIN / "references" / "advisory-schema.json").read_text(encoding="utf-8")
         )
         self.assertIn("description", schema)
+        self.assertEqual(schema["required"], ["output"])
+        self.assertEqual(set(schema["properties"]), {"output"})
+        payload_schema = schema["properties"]["output"]
         self.assertEqual(
-            set(schema["required"]),
+            set(payload_schema["required"]),
             {
                 "status",
                 "verdict",
@@ -32,9 +35,16 @@ class SubmissionPacketTests(unittest.TestCase):
         self.assertFalse(
             any(
                 property_schema.get("type") == "object"
-                for property_schema in schema["properties"].values()
+                for property_schema in payload_schema["properties"].values()
             )
         )
+        for name in ("advisory-schema.json", "pr-review-schema.json"):
+            contract = json.loads(
+                (PLUGIN / "references" / name).read_text(encoding="utf-8")
+            )
+            self.assertEqual(contract["required"], ["output"])
+            self.assertEqual(set(contract["properties"]), {"output"})
+            self.assertEqual(contract["additionalProperties"], False)
         skill = (PLUGIN / "skills" / "independent-advisory" / "SKILL.md").read_text(
             encoding="utf-8"
         )

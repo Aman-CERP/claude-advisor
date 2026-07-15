@@ -1083,6 +1083,17 @@ def extract_structured_output(envelope: Any) -> dict[str, Any]:
     return structured
 
 
+def unwrap_result_payload(structured: dict[str, Any]) -> dict[str, Any]:
+    payload = structured.get("output")
+    if set(structured) != {"output"} or not isinstance(payload, dict):
+        raise AdvisorError(
+            EXIT_INVALID_RESULT,
+            "Claude structured output has an invalid compatibility envelope",
+            outcome="invalid_result",
+        )
+    return payload
+
+
 def parse_claude_stream(raw: bytes) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     try:
         text = raw.decode("utf-8")
@@ -1418,6 +1429,24 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
             )
 
     terminal_result_omitted = terminal is not None and "result" in terminal
+    terminal_errors = terminal.get("errors") if terminal is not None else None
+    terminal_error_categories: dict[str, int] = {}
+    if isinstance(terminal_errors, list):
+        for error in terminal_errors:
+            category = "unclassified"
+            if isinstance(error, str):
+                normalized = error.lower()
+                if "required property" in normalized:
+                    category = "missing_required_property"
+                elif "additional propert" in normalized:
+                    category = "additional_property"
+                elif "should be" in normalized or "must be" in normalized:
+                    category = "type_or_constraint_mismatch"
+                elif "fallback" in normalized and "retract" in normalized:
+                    category = "model_fallback_retraction"
+            terminal_error_categories[category] = (
+                terminal_error_categories.get(category, 0) + 1
+            )
     return {
         "exit_code": exit_code,
         "stdout_bytes": len(raw),
@@ -1435,6 +1464,10 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
         "assistant_models_observed": sorted(assistant_models),
         "model_usage": normalized_usage,
         "terminal_result_omitted": terminal_result_omitted,
+        "terminal_error_count": (
+            len(terminal_errors) if isinstance(terminal_errors, list) else 0
+        ),
+        "terminal_error_categories": dict(sorted(terminal_error_categories.items())),
     }
 
 
@@ -1941,8 +1974,9 @@ def execute_claude(
                 outcome="ceiling_breach",
             )
         try:
-            result = extract_structured_output(envelope)
-            validate_result(result, schema)
+            structured = extract_structured_output(envelope)
+            validate_result(structured, schema)
+            result = unwrap_result_payload(structured)
         except AdvisorError as exc:
             completed_attempt_record["outcome"] = exc.outcome
             raise

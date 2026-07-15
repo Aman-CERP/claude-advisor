@@ -201,6 +201,27 @@ class DoctorTests(unittest.TestCase):
 
 
 class AdvisoryTests(unittest.TestCase):
+    def test_provider_compatibility_envelope_unwraps_exactly_once(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        schema = runner.load_schema("advisory-schema.json")
+        valid = {"output": ADVISORY_RESULT}
+
+        runner.validate_result(valid, schema)
+        self.assertEqual(runner.unwrap_result_payload(valid), ADVISORY_RESULT)
+
+        for invalid in (
+            {"response": ADVISORY_RESULT},
+            {"output": {"output": ADVISORY_RESULT}},
+            {"output": ADVISORY_RESULT, "result": ADVISORY_RESULT},
+        ):
+            with self.subTest(keys=sorted(invalid)):
+                with self.assertRaises(runner.AdvisorError):
+                    runner.validate_result(invalid, schema)
+
     def test_failed_stream_omits_provider_result_content(self) -> None:
         spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
         self.assertIsNotNone(spec)
@@ -247,6 +268,44 @@ class AdvisoryTests(unittest.TestCase):
 
         self.assertEqual(summary["structured_output_tool_attempts"], 1)
         self.assertEqual(summary["correction_events"], 1)
+
+    def test_failed_stream_classifies_terminal_errors_without_retaining_text(
+        self,
+    ) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        raw = (
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "error_max_structured_output_retries",
+                    "errors": [
+                        "root: must have required property 'output'",
+                        "root: must NOT have additional properties",
+                        "private customer analysis must not be retained",
+                    ],
+                }
+            )
+            + "\n"
+        ).encode()
+
+        summary = runner.summarize_failed_stream(raw, exit_code=1)
+
+        self.assertEqual(summary["terminal_error_count"], 3)
+        self.assertEqual(
+            summary["terminal_error_categories"],
+            {
+                "additional_property": 1,
+                "missing_required_property": 1,
+                "unclassified": 1,
+            },
+        )
+        serialized = json.dumps(summary)
+        self.assertNotIn("private customer analysis", serialized)
+        self.assertNotIn("property 'output'", serialized)
 
     def test_advisory_is_isolated_and_writes_owner_only_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

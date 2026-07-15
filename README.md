@@ -142,12 +142,12 @@ By default, runs are stored under `.codex/amanerp-second-opinion/runs/` in the c
 - `request.json` — sanitized configuration and source metadata;
 - `input.sha256` — hash of the exact prompt and untrusted input bundle;
 - `claude-response.json` — the model's JSON envelope;
-- `result.json` — the locally schema-validated result;
+- `result.json` — the locally schema-validated consumer result after removal of the provider-facing `output` compatibility envelope;
 - `report.md` — deterministic human-readable rendering;
 - `receipt.json` — versions, revisions, hashes, limits, controls, outcome, and safe usage metadata;
 - `stderr.log` — redacted child-process diagnostics.
 
-On a non-zero Claude exit, `claude-failure.json` records a bounded, redacted event summary without retaining the raw failed stream or terminal result prose. Structured-output exhaustion additionally records only safe event/subtype, tool-attempt, correction, usage, and model counts. Receipt schema 3 distinguishes the requested family, observed answering model, every observed identifier in the requested family, auxiliary model families, per-model role/token/cost usage, authorized attempts, attempts started, retry status, and per-attempt budget. Identifier variants within the requested family remain primary so moving aliases and dated IDs cannot create a false downgrade alarm. The former `resolved_models` field remains only as a deprecated compatibility alias.
+On a non-zero Claude exit, `claude-failure.json` records a bounded, redacted event summary without retaining the raw failed stream, terminal result prose, or validation-message text. Structured-output exhaustion additionally records only safe event/subtype, tool-attempt, correction, terminal-error category, usage, and model counts. Receipt schema 3 distinguishes the requested family, observed answering model, every observed identifier in the requested family, auxiliary model families, per-model role/token/cost usage, authorized attempts, attempts started, retry status, and per-attempt budget. Identifier variants within the requested family remain primary so moving aliases and dated IDs cannot create a false downgrade alarm. The former `resolved_models` field remains only as a deprecated compatibility alias.
 
 Run files use owner-only permissions where supported. Input hashes prove identity, not content; preserve an approved source snapshot separately when content-level auditability is required.
 

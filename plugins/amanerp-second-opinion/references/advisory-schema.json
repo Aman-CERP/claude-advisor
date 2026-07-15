@@ -1,63 +1,71 @@
 {
   "type": "object",
-  "description": "A bounded independent advisory. Rich reasoning belongs in analysis, not additional fields.",
+  "description": "A provider-compatibility envelope with exactly one advisory payload.",
   "properties": {
-    "status": {
-      "type": "string",
-      "description": "Whether the supplied evidence supports a bounded opinion.",
-      "enum": ["completed", "unable_to_advise"]
-    },
-    "verdict": {
-      "type": "string",
-      "description": "The recommended decision or the concise reason advice is not supportable."
-    },
-    "confidence": {
-      "type": "string",
-      "description": "Confidence in the verdict given only the supplied evidence.",
-      "enum": ["low", "medium", "high"]
-    },
-    "executive_summary": {
-      "type": "string",
-      "description": "A concise decision-oriented summary."
-    },
-    "analysis": {
-      "type": "string",
-      "description": "Markdown analysis covering facts and evidence, inferences and assumptions, options and tradeoffs, minimum controls, operational failure modes, decision and estimate or ADR implications, and open questions where applicable."
-    },
-    "material_risks": {
-      "type": "array",
-      "description": "Material risks that could change or invalidate the verdict.",
-      "items": {
-        "type": "string"
+    "output": {
+      "type": "object",
+      "description": "A bounded independent advisory. Rich reasoning belongs in analysis, not additional fields.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Whether the supplied evidence supports a bounded opinion.",
+          "enum": ["completed", "unable_to_advise"]
+        },
+        "verdict": {
+          "type": "string",
+          "description": "The recommended decision or the concise reason advice is not supportable."
+        },
+        "confidence": {
+          "type": "string",
+          "description": "Confidence in the verdict given only the supplied evidence.",
+          "enum": ["low", "medium", "high"]
+        },
+        "executive_summary": {
+          "type": "string",
+          "description": "A concise decision-oriented summary."
+        },
+        "analysis": {
+          "type": "string",
+          "description": "Markdown analysis covering facts and evidence, inferences and assumptions, options and tradeoffs, minimum controls, operational failure modes, decision and estimate or ADR implications, and open questions where applicable."
+        },
+        "material_risks": {
+          "type": "array",
+          "description": "Material risks that could change or invalidate the verdict.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20
+        },
+        "conditions_that_change_it": {
+          "type": "array",
+          "description": "Specific evidence or conditions that would change the verdict.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20
+        },
+        "validation_steps": {
+          "type": "array",
+          "description": "Concrete checks needed before acting on the verdict.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20
+        }
       },
-      "maxItems": 20
-    },
-    "conditions_that_change_it": {
-      "type": "array",
-      "description": "Specific evidence or conditions that would change the verdict.",
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 20
-    },
-    "validation_steps": {
-      "type": "array",
-      "description": "Concrete checks needed before acting on the verdict.",
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 20
+      "required": [
+        "status",
+        "verdict",
+        "confidence",
+        "executive_summary",
+        "analysis",
+        "material_risks",
+        "conditions_that_change_it",
+        "validation_steps"
+      ],
+      "additionalProperties": false
     }
   },
-  "required": [
-    "status",
-    "verdict",
-    "confidence",
-    "executive_summary",
-    "analysis",
-    "material_risks",
-    "conditions_that_change_it",
-    "validation_steps"
-  ],
+  "required": ["output"],
   "additionalProperties": false
 }

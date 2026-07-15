@@ -12,11 +12,22 @@ closed, but the previous advisory schema was deeply nested and the submitted
 question contained a competing bespoke output contract. `--max-turns` bounded the
 outer Claude run; it did not guarantee successful internal schema repair.
 
+A later full-PR dogfood run failed in the same way after five StructuredOutput
+calls. Current Anthropic documentation says the Agent SDK validates and
+re-prompts on mismatch, recommends focused schemas, and exposes an `errors`
+field on the terminal result. Anthropic's open issue #502 separately documents
+an intermittent agent-side wrapper defect in which otherwise valid data is sent
+under `output`, `response`, or `json`, making a root payload fail validation.
+
 ## Decision
 
 1. Advisory results use a shallow, closed JSON object. Rich facts, assumptions,
    option tradeoffs, controls, operational failure modes, estimate/ADR
    implications, and open questions live in one Markdown `analysis` string.
+   Both advisory and PR-review provider contracts place their existing payload
+   inside one required root property named `output`. The runner validates the
+   whole provider envelope locally, removes exactly one `output` layer, and
+   publishes the unchanged consumer payload in `result.json`.
 2. The question defines the bounded decision and analysis topics; context is
    evidence. Neither may replace the bundled JSON Schema, which is the sole
    machine-output contract.
@@ -34,7 +45,8 @@ outer Claude run; it did not guarantee successful internal schema repair.
    A retry is recorded as triggered only when the second process starts; deadline
    expiry before that point is recorded as aggregate-timeout preemption.
 6. Failed streams are never retained. Failure summaries omit terminal result prose
-   and preserve only bounded control/usage counts and validated model identifiers.
+   and validation messages, preserving only bounded control/usage counts,
+   content-free terminal error categories, and validated model identifiers.
    Every started attempt receives an audit record, including process-level
    failures that do not return a parseable terminal and exit-zero responses later
    rejected by a post-parse gate. Unexpected internal exceptions finalize the
@@ -44,6 +56,9 @@ outer Claude run; it did not guarantee successful internal schema repair.
 
 - Advisory generation has a materially simpler structured-output target while the
   human reasoning rubric remains intact.
+- The single-property compatibility envelope aligns the schema with the most
+  common provider-generated wrapper while keeping `result.json` independent of
+  that provider quirk. Alternative or nested wrappers still fail closed.
 - `result.json` is schema-breaking for downstream v0.2.0 consumers; the changelog
   and release notes provide the migration contract.
 - An identical retry can recover only transient/non-deterministic failure and may

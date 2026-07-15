@@ -2,7 +2,7 @@
 
 Publication-candidate patch for Second Opinion by AmanERP. OpenAI submission remains intentionally deferred.
 
-Version 0.2.1 hardens advisory reliability after a real critical Opus run exhausted Claude Code's internal structured-output retries. The advisory schema is now a shallow closed envelope with one Markdown analysis field, the trusted prompt makes the output-contract boundary explicit, and receipt schema 3 records safe failure diagnostics and attempt metadata without retaining partial failed output.
+Version 0.2.1 hardens advisory reliability after real critical Opus runs exhausted Claude Code's internal structured-output retries. Both provider-facing schemas now use one required `output` compatibility property to mitigate the current documented Agent SDK wrapper defect; the runner validates and removes that envelope before writing the stable consumer payload. The advisory payload is shallow with one Markdown analysis field, the trusted prompt makes the output-contract boundary explicit, and receipt schema 3 records content-free failure categories and attempt metadata without retaining partial failed output or validation-message text.
 
 The advisory `result.json` shape is intentionally breaking for machine consumers: the former nested facts, assumptions, options, recommendation, and open-questions structures are represented in Markdown `analysis`, with verdict, confidence, risks, change conditions, and validation steps remaining top-level. Update consumers before adopting v0.2.1.
 
