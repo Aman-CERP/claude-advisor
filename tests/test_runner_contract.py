@@ -78,6 +78,10 @@ class DoctorTests(unittest.TestCase):
             )
             calls = read_jsonl(gh_log)
             self.assertEqual(
+                calls[-2]["args"],
+                ["auth", "status", "--hostname", "github.com"],
+            )
+            self.assertEqual(
                 calls[-1]["args"],
                 [
                     "api",

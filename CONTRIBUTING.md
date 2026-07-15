@@ -15,7 +15,6 @@ git switch -c your-name/short-description
 make check
 make package
 make package-repro-check
-make marketplace-update-smoke
 ```
 
 Tests use fake Claude and GitHub executables and require no credentials. Live tests are manual release gates and must use harmless, non-sensitive inputs.

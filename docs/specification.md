@@ -180,7 +180,7 @@ Doctor fails closed when a mandatory flag is missing. It warns, but does not fai
 It returns structured JSON and a non-zero exit when a required check fails. It must not print credentials or full environment contents.
 
 An explicit `doctor --check-update` option performs a read-only release check. The
-option implies the GitHub CLI preflight, queries only
+option implies a `github.com`-specific GitHub CLI authentication preflight, queries only
 `Aman-CERP/amanerp-second-opinion` on `github.com` through GitHub's latest stable release API,
 accepts only a canonical `vMAJOR.MINOR.PATCH` tag and canonical HTTPS GitHub
 release URL, and reports the installed version, latest version, comparison state,

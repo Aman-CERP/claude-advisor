@@ -289,7 +289,10 @@ if log:
 if args == ["--version"]:
     print("gh version 2.92.0 (fake)")
     raise SystemExit(0)
-if args == ["auth", "status"]:
+if args in (
+    ["auth", "status"],
+    ["auth", "status", "--hostname", "github.com"],
+):
     raise SystemExit(0 if control.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
 if args == [
     "api",

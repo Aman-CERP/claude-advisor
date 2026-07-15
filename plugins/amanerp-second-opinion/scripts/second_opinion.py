@@ -628,7 +628,10 @@ def doctor(*, require_gh: bool, check_update: bool = False) -> dict[str, Any]:
                 outcome="unavailable",
             )
         gh_version = parse_version(gh_version_result.stdout, "GitHub CLI")
-        gh_auth = run_probe([gh, "auth", "status"], child_kind="github")
+        gh_auth_arguments = ["auth", "status"]
+        if check_update:
+            gh_auth_arguments.extend(["--hostname", "github.com"])
+        gh_auth = run_probe([gh, *gh_auth_arguments], child_kind="github")
         if gh_auth.returncode != 0:
             raise AdvisorError(
                 EXIT_AUTH, "GitHub CLI is not authenticated", outcome="unavailable"
