@@ -33,6 +33,8 @@ outer Claude run; it did not guarantee successful internal schema repair.
    reported first-attempt usage must be valid and within its slice before retry.
 6. Failed streams are never retained. Failure summaries omit terminal result prose
    and preserve only bounded control/usage counts and validated model identifiers.
+   Every started attempt receives an audit record, including process-level
+   failures that do not return a parseable terminal.
 
 ## Consequences
 

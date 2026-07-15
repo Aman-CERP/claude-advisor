@@ -1334,9 +1334,12 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
                 )
                 structured_output_tool_attempts += event_structured_output_attempts
                 event_used_structured_output = event_structured_output_attempts > 0
-        if event_type == "user" and previous_event_used_structured_output:
-            correction_events += 1
-        previous_event_used_structured_output = event_used_structured_output
+        if event_type == "assistant":
+            previous_event_used_structured_output = event_used_structured_output
+        elif event_type == "user":
+            if previous_event_used_structured_output:
+                correction_events += 1
+            previous_event_used_structured_output = False
 
     terminal = next(
         (event for event in reversed(events) if event.get("type") == "result"), None
@@ -1682,6 +1685,24 @@ def execute_claude(
                 timeout_stderr, redactions = redact(exc.stderr)
                 atomic_write_text(stderr_path, accumulated_stderr + timeout_stderr)
                 receipt["stderr_redactions"] = total_redactions + redactions
+                process_outcome = (
+                    "invalid_result"
+                    if exc.reason == "limit" and exc.stream_name == "stdout"
+                    else "timeout" if exc.reason == "timeout" else "claude_failed"
+                )
+                receipt["claude"]["attempts"].append(
+                    {
+                        "attempt": attempt_number,
+                        "exit_code": None,
+                        "outcome": process_outcome,
+                        "process_failure_reason": exc.reason,
+                        "stream_name": exc.stream_name,
+                        "models_observed": [],
+                        "model_usage": [],
+                        "model_policy_verified": False,
+                        "model_policy_violation": False,
+                    }
+                )
                 if exc.reason == "limit" and exc.stream_name == "stdout":
                     raise AdvisorError(
                         EXIT_INVALID_RESULT,

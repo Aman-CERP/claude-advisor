@@ -20,6 +20,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Clarified that the question is the bounded decision, context is evidence, and the bundled JSON Schema is the sole machine-output contract.
 - Bumped receipts to schema 3 with authorized attempts, attempts started, retry status, per-attempt budget, and safe attempt records.
 - Tightened correction diagnostics to count only user events immediately following a StructuredOutput tool attempt instead of every user stream event.
+- Added content-free attempt records for process-level timeout, start, I/O, and stream-limit failures so every started retry is auditable; correction matching now survives intervening non-participant system events.
 
 ### Migration
 

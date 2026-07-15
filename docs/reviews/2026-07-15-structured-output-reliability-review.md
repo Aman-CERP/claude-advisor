@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Initial PR findings fixed; final PR rerun pending
+Status: Two PR review passes complete; final focused agreement rerun pending
 
 ## Incident
 
@@ -93,3 +93,28 @@ Claude reported one medium and one low finding:
 Codex and Claude agree on the architecture and both initial PR findings are fixed.
 Final merge agreement remains pending the new immutable-head critical rerun and
 green CI.
+
+### Second immutable-head PR review
+
+- Reviewed head: `875d459edde8425713532877b7a96fcee3a5c71d`
+- Diff SHA-256: `d8487db41b183f11f70cc3e837528bc8569f4b38fee8625ebbd1929434d5df6e`
+- Run: `20260715T072910Z-pr-review-f24475d8`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 2 / USD 1.1471865
+- Material gate: no critical, high, or medium finding
+
+Claude reported two low audit-quality findings, both accepted:
+
+1. Process-level failures did not append attempt records. Timeout, start, I/O,
+   and stream-limit branches now append minimal content-free records; tests cover
+   both first-attempt timeout and retry-attempt timeout after a recorded structured
+   failure.
+2. Correction matching could undercount when a system event occurred between the
+   StructuredOutput attempt and correction. The state now carries across
+   non-participant events and clears only on an assistant or user event; the test
+   includes an intervening system event and an unrelated user event.
+
+The additional verification gap for two structured-output failures is also
+closed: a test proves both attempt-numbered summaries, both attempt records, the
+canonical final failure, and the terminal structured-output outcome.

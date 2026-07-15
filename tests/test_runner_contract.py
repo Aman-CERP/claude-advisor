@@ -236,6 +236,7 @@ class AdvisoryTests(unittest.TestCase):
                         "content": [{"type": "tool_use", "name": "StructuredOutput"}],
                     },
                 },
+                {"type": "system", "subtype": "structured_output_retry"},
                 {"type": "user", "message": {"content": "schema correction"}},
                 {"type": "user", "message": {"content": "unrelated user event"}},
                 {"type": "result", "subtype": "error_during_execution"},
@@ -787,6 +788,48 @@ class AdvisoryTests(unittest.TestCase):
                     calls[0]["args"][calls[0]["args"].index("--json-schema") + 1],
                 )
 
+    def test_two_structured_output_failures_are_both_audited(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-exhausted"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "structured_output_retry_exhausted")
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertTrue(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
+                [
+                    "structured_output_retry_exhausted",
+                    "structured_output_retry_exhausted",
+                ],
+            )
+            self.assertTrue((run_dir / "claude-failure-attempt-1.json").exists())
+            self.assertTrue((run_dir / "claude-failure-attempt-2.json").exists())
+            self.assertTrue((run_dir / "claude-failure.json").exists())
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 2)
+
     def test_authorized_retry_does_not_retry_other_claude_failures(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -986,7 +1029,100 @@ class AdvisoryTests(unittest.TestCase):
             run_dir = Path(captured.exception.payload["run_dir"])
             receipt = json.loads((run_dir / "receipt.json").read_text())
             self.assertEqual(receipt["outcome"], "timeout")
+            self.assertEqual(receipt["claude"]["attempts"][0]["outcome"], "timeout")
             self.assertNotIn("very-secret-value", (run_dir / "stderr.log").read_text())
+
+    def test_second_attempt_timeout_is_present_in_retry_audit_trail(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        session_id = "00000000-0000-4000-8000-000000000001"
+        first_failure = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": session_id,
+                    "model": "claude-opus-4-8",
+                },
+                {
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                    },
+                },
+                {
+                    "type": "result",
+                    "subtype": "error_max_structured_output_retries",
+                    "terminal_reason": "structured_output_retry_exhausted",
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "modelUsage": {
+                        "claude-opus-4-8": {
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                            "costUSD": 0.01,
+                        }
+                    },
+                },
+            )
+        ).encode()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            doctor_result = {
+                "claude": {
+                    "path": "/fake/claude",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
+                },
+                "warnings": [],
+            }
+            with mock.patch.object(
+                runner,
+                "run_bounded_process",
+                side_effect=(
+                    (1, first_failure, b""),
+                    runner.BoundedProcessError("timeout", stderr=b"retry timed out"),
+                ),
+            ):
+                with self.assertRaises(runner.AdvisorError) as captured:
+                    runner.execute_claude(
+                        kind="advisory",
+                        prompt_name="advisory-prompt.md",
+                        schema_name="advisory-schema.json",
+                        payload={"question": "Choose A or B", "context": []},
+                        request={"kind": "advisory"},
+                        source={"type": "advisory"},
+                        limits={
+                            "timeout": 60,
+                            "max_turns": 10,
+                            "max_budget_usd": 10.0,
+                            "model": "opus",
+                            "effort": "xhigh",
+                            "quality_profile": "critical",
+                            "standard_quality_acknowledged": False,
+                            "structured_output_attempts": 2,
+                            "retry_cost_acknowledged": True,
+                            "per_attempt_budget_usd": 5.0,
+                        },
+                        output_dir=str(root / "runs"),
+                        sensitive_override=False,
+                        sensitive_findings=[],
+                        doctor_result=doctor_result,
+                    )
+            self.assertEqual(captured.exception.code, 6)
+            run_dir = Path(captured.exception.payload["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertEqual(
+                [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
+                ["structured_output_retry_exhausted", "timeout"],
+            )
 
 
 class SecurityTests(unittest.TestCase):
