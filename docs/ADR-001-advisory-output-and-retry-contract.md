@@ -31,6 +31,8 @@ outer Claude run; it did not guarantee successful internal schema repair.
    must not be reported as proof of a downgrade.
 5. Timeout and budget are aggregate across attempts. The budget is divided evenly;
    reported first-attempt usage must be valid and within its slice before retry.
+   A retry is recorded as triggered only when the second process starts; deadline
+   expiry before that point is recorded as aggregate-timeout preemption.
 6. Failed streams are never retained. Failure summaries omit terminal result prose
    and preserve only bounded control/usage counts and validated model identifiers.
    Every started attempt receives an audit record, including process-level

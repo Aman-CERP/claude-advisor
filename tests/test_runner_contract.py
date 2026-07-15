@@ -952,6 +952,38 @@ class AdvisoryTests(unittest.TestCase):
             ]
             self.assertEqual(len(calls), 1)
 
+    def test_recovered_attempt_rejects_auxiliary_answering_model(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-then-auxiliary"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "model_policy_violation")
+            self.assertTrue(receipt["resource_limits"]["retry_triggered"])
+            self.assertFalse((run_dir / "result.json").exists())
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 2)
+
     def test_advisory_bounds_claude_stdout_before_json_parsing(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -1122,6 +1154,103 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(
                 [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
                 ["structured_output_retry_exhausted", "timeout"],
+            )
+
+    def test_aggregate_timeout_preempts_retry_without_marking_it_started(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        session_id = "00000000-0000-4000-8000-000000000001"
+        first_failure = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": session_id,
+                    "model": "claude-opus-4-8",
+                },
+                {
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                    },
+                },
+                {
+                    "type": "result",
+                    "subtype": "error_max_structured_output_retries",
+                    "terminal_reason": "structured_output_retry_exhausted",
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "modelUsage": {
+                        "claude-opus-4-8": {
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                            "costUSD": 0.01,
+                        }
+                    },
+                },
+            )
+        ).encode()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            doctor_result = {
+                "claude": {
+                    "path": "/fake/claude",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
+                },
+                "warnings": [],
+            }
+            with (
+                mock.patch.object(
+                    runner,
+                    "run_bounded_process",
+                    return_value=(1, first_failure, b""),
+                ),
+                mock.patch.object(
+                    runner.time,
+                    "monotonic",
+                    side_effect=(0.0, 0.0, 61.0, 61.0),
+                ),
+            ):
+                with self.assertRaises(runner.AdvisorError) as captured:
+                    runner.execute_claude(
+                        kind="advisory",
+                        prompt_name="advisory-prompt.md",
+                        schema_name="advisory-schema.json",
+                        payload={"question": "Choose A or B", "context": []},
+                        request={"kind": "advisory"},
+                        source={"type": "advisory"},
+                        limits={
+                            "timeout": 60,
+                            "max_turns": 10,
+                            "max_budget_usd": 10.0,
+                            "model": "opus",
+                            "effort": "xhigh",
+                            "quality_profile": "critical",
+                            "standard_quality_acknowledged": False,
+                            "structured_output_attempts": 2,
+                            "retry_cost_acknowledged": True,
+                            "per_attempt_budget_usd": 5.0,
+                        },
+                        output_dir=str(root / "runs"),
+                        sensitive_override=False,
+                        sensitive_findings=[],
+                        doctor_result=doctor_result,
+                    )
+            self.assertEqual(captured.exception.code, 6)
+            run_dir = Path(captured.exception.payload["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                receipt["resource_limits"]["retry_preempted_reason"],
+                "aggregate_timeout",
             )
 
 

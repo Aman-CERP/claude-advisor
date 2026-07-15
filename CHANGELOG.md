@@ -21,6 +21,8 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Bumped receipts to schema 3 with authorized attempts, attempts started, retry status, per-attempt budget, and safe attempt records.
 - Tightened correction diagnostics to count only user events immediately following a StructuredOutput tool attempt instead of every user stream event.
 - Added content-free attempt records for process-level timeout, start, I/O, and stream-limit failures so every started retry is auditable; correction matching now survives intervening non-participant system events.
+- Made `retry_triggered` mean an actually started second process; aggregate-deadline preemption now leaves it false and records `retry_preempted_reason: aggregate_timeout`.
+- Added a recovered-attempt regression proving the normal success-path model gate rejects a Haiku answering model after an Opus structured-output failure.
 
 ### Migration
 

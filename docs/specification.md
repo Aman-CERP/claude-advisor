@@ -408,8 +408,10 @@ explicit CLI controls, is limited to Claude's structured-output retry-exhausted
 terminal outcome, and remains inside aggregate budget and timeout ceilings. A
 failed attempt with observed off-family use produces `model_policy_violation`;
 incomplete model telemetry blocks the retry as
-`retry_blocked_model_unverified` without falsely claiming a downgrade. A
-new Sonnet standard run requires a distinct command with explicit acknowledgment
+`retry_blocked_model_unverified` without falsely claiming a downgrade. A retry
+is marked triggered only after its process attempt actually starts; an aggregate
+deadline that expires first records `retry_preempted_reason` instead. A new
+Sonnet standard run requires a distinct command with explicit acknowledgment
 and, when invoked through a skill, fresh user authorization.
 
 A live 2.1.210 critical-profile smoke completed with Opus 4.8 as the sole initialized, answering, and billed model, no auxiliary model, four turns, and schema-valid output. A later real advisory reached Claude's internal structured-output retry ceiling after six assistant responses and five correction events despite the plugin's ten-turn ceiling; the plugin correctly failed closed. This proves that `--max-turns` is an outer per-attempt ceiling, not a guarantee that Claude's internal schema-repair loop will succeed. Version 0.2.1 therefore flattens the advisory schema, makes the output-contract boundary explicit, classifies this terminal outcome precisely, and offers only an explicitly authorized same-model retry. A separate `--tools ""` probe elicited attempted Bash-call prose but created no marker file, confirming that model narration is not execution evidence and that the no-tools boundary still holds on the highest-tested release.

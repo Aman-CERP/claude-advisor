@@ -1641,12 +1641,18 @@ def execute_claude(
             elapsed = time.monotonic() - start_monotonic
             remaining_timeout = limits["timeout"] - elapsed
             if remaining_timeout <= 0:
+                if attempt_number > 1:
+                    receipt["resource_limits"][
+                        "retry_preempted_reason"
+                    ] = "aggregate_timeout"
                 raise AdvisorError(
                     EXIT_TIMEOUT,
                     "Claude analysis timed out",
                     outcome="timeout",
                 )
             receipt["resource_limits"]["attempts_started"] = attempt_number
+            if attempt_number > 1:
+                receipt["resource_limits"]["retry_triggered"] = True
             command = [
                 doctor_result["claude"]["path"],
                 "--print",
@@ -1822,7 +1828,6 @@ def execute_claude(
                 and retry_usage_valid
             ):
                 failed_reported_cost += float(failure_cost)
-                receipt["resource_limits"]["retry_triggered"] = True
                 continue
 
             failure_path = run_dir / "claude-failure.json"

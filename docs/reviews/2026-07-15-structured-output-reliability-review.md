@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Two PR review passes complete; final focused agreement rerun pending
+Status: Three PR review passes complete; final agreement rerun pending
 
 ## Incident
 
@@ -118,3 +118,26 @@ Claude reported two low audit-quality findings, both accepted:
 The additional verification gap for two structured-output failures is also
 closed: a test proves both attempt-numbered summaries, both attempt records, the
 canonical final failure, and the terminal structured-output outcome.
+
+### Third immutable-head PR review
+
+- Reviewed head: `b3c315920dcabd55f3ecae96d2b6bb0f8a504fda`
+- Diff SHA-256: `4c55a81b8922a0d15b1b8388472b64212dd3adfa4fcb5118fd93e8242d7c0281`
+- Run: `20260715T073844Z-pr-review-26828129`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 3 / USD 1.377668
+- Material gate: no critical, high, or medium finding
+
+Claude reported one low observability finding: `retry_triggered` was set after a
+retry decision but before the aggregate-time guard for attempt two. If the first
+attempt consumed the deadline, the receipt could say triggered while only one
+attempt started. Accepted and fixed: the field is now set after attempt two
+passes the time guard and starts; deadline preemption keeps it false and records
+`retry_preempted_reason: aggregate_timeout`. A monotonic-clock regression test
+proves the boundary.
+
+Claude also noted no direct test for a successful recovered attempt using an
+off-family answering model. The normal success gate already enforced this, and a
+new regression now forces Opus exhaustion followed by a Haiku success envelope;
+the run exits `model_policy_violation` and publishes no result.

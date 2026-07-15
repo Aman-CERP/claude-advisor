@@ -171,6 +171,10 @@ primary_model = control.get(
 initialized_model = control.get("FAKE_CLAUDE_INIT_MODEL", primary_model)
 assistant_model = control.get("FAKE_CLAUDE_ASSISTANT_MODEL", primary_model)
 usage_model = control.get("FAKE_CLAUDE_USAGE_MODEL", primary_model)
+if mode == "structured-retry-then-auxiliary" and analysis_call_number > 1:
+    initialized_model = "claude-haiku-4-5"
+    assistant_model = "claude-haiku-4-5"
+    usage_model = "claude-haiku-4-5"
 session_id = "00000000-0000-4000-8000-000000000001"
 if mode != "missing-init":
     print(json.dumps({
@@ -205,7 +209,8 @@ if mode == "error":
     print("token=very-secret-value", file=sys.stderr)
     raise SystemExit(23)
 if mode == "structured-retry-exhausted" or (
-    mode == "structured-retry-once" and analysis_call_number == 1
+    mode in ("structured-retry-once", "structured-retry-then-auxiliary")
+    and analysis_call_number == 1
 ):
     for index in range(6):
         print(json.dumps({
