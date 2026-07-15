@@ -1769,7 +1769,11 @@ class PullRequestTests(unittest.TestCase):
             receipt = json.loads(
                 (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
             )
+            result = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "result.json").read_text()
+            )
             self.assertEqual(receipt["claude"]["quality_profile"], "critical")
+            self.assertEqual(result, PR_RESULT)
             self.assertEqual(
                 receipt["claude"]["primary_model_observed"], "claude-opus-4-8"
             )

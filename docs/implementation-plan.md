@@ -95,8 +95,9 @@ This release preserves the v0.1 runtime trust boundary while replacing the publi
    counts, terminal usage metadata, and observed model identities.
 5. Add an opt-in two-attempt mode requiring explicit cost acknowledgment. Keep
    model, effort, prompt, schema, input, isolation controls, and turn ceiling
-   identical; divide the aggregate budget equally and enforce one aggregate
-   parent timeout. Do not retry any other outcome.
+   identical; give attempt one the aggregate ceiling, give an eligible retry only
+   the verified unused balance rounded down to cents, and enforce one aggregate
+   parent timeout. Preempt retry below USD 0.10. Do not retry any other outcome.
 6. Bump receipt schema and plugin patch version; update changelog, release notes,
    validators, packaging, and compatibility documentation.
 7. Run unit/integration tests, `make check`, deterministic packaging, official

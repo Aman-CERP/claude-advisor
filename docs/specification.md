@@ -224,9 +224,11 @@ classification. It repeats the identical input, prompt, schema, model, effort,
 isolation controls, and per-attempt turn ceiling; it never downgrades or falls
 back. Initialization, assistant, and usage telemetry from the failed attempt must
 also verify the selected model family with no auxiliary model before retry. The
-configured budget and timeout are aggregate run ceilings. For two
-attempts, the runner divides the requested budget equally and starts the second
-attempt only while aggregate time and budget remain.
+configured budget and timeout are aggregate run ceilings. For two attempts,
+attempt one receives the full aggregate budget ceiling. After an eligible
+failure with verified reported cost, attempt two receives only the unused
+balance rounded down to cents and is preempted when less than USD 0.10 or no
+aggregate time remains.
 
 ### FR-4: PR-review command
 

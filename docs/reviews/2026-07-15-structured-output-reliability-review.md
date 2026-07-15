@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Final dogfood failure reproduced; provider-wrapper mitigation under validation
+Status: Seventh review findings fixed; convergence rerun pending
 
 ## Incident
 
@@ -233,9 +233,35 @@ down to cents, or is preempted below USD 0.10. Tests cover a USD 6 first-attempt
 success under a USD 10 two-attempt authorization, a USD 0.42 failure followed by
 a USD 9.58 retry ceiling, and insufficient-balance preemption.
 
+### Seventh immutable-head PR review
+
+- Reviewed head: `7b3a76d36285e87fd07782f42ac5b47ce22fb39a`
+- Diff SHA-256: `8183b9194d048e588ea0177cdd8ea34ada5cd034807c3415c6cb48b4e9deac34`
+- Run: `20260715T083934Z-pr-review-133242a3`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 2 / USD 1.363714
+- Result SHA-256: `46803fa6543fd51bbda48dd5a9b10809a39e97870784f769d95bbab6368f06df`
+
+Claude found no code-level correctness or security regression and reported one
+medium documentation contradiction plus one low drift risk:
+
+1. Accepted (medium): FR-4 and Phase H still described equal budget slices while
+   the code, skills, ADR, and later specification section described the remaining
+   aggregate ledger. Both stale passages now match the runtime contract.
+2. Accepted (low): profile-specific skill disclosure figures duplicate runner
+   defaults. A repository test now imports the runner profiles and constructs the
+   exact required skill phrases, failing CI if code and operator disclosure drift.
+
+Two verification gaps were rejected with direct evidence. The sixth and seventh
+runs are themselves successful live Claude Code 2.1.210 envelope canaries, so the
+claim that no live evidence exists is stale. The fake critical PR-review test runs
+the provider envelope end to end through the PR schema and now explicitly asserts
+that the unwrapped `result.json` equals the PR payload.
+
 ## Final agreement
 
-**PENDING.** The fifth dogfood call did not return a usable review. Merge remains
-blocked until the compatibility-envelope change passes the full local/CI gates
-and a fresh immutable-head critical Claude review produces a validated result
-whose findings are independently dispositioned.
+**PENDING CONVERGENCE RERUN.** The fifth call failed closed; the sixth and seventh
+calls successfully validated the compatibility envelope and every actionable
+finding was accepted and fixed. One final immutable-head review is required
+because the seventh pass found a medium contract contradiction.
