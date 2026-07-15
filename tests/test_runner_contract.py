@@ -180,6 +180,16 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 3)
             self.assertIn("--max-turns", completed.stderr)
 
+    def test_doctor_rejects_unverified_stream_telemetry_version(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_VERSION"] = "2.1.209 (Claude Code)"
+            completed = run_cli(["doctor"], cwd=root, env=env)
+
+            self.assertEqual(completed.returncode, 3)
+            self.assertIn("2.1.210 or newer", completed.stderr)
+
     def test_doctor_bounds_dependency_probe_output(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -191,6 +201,21 @@ class DoctorTests(unittest.TestCase):
 
 
 class AdvisoryTests(unittest.TestCase):
+    def test_failed_stream_redacts_before_bounding_provider_error(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        provider_error = "x" * 4088 + " " + "sk-ant-" + "a" * 32
+        raw = (json.dumps({"type": "result", "result": provider_error}) + "\n").encode()
+
+        summary = runner.summarize_failed_stream(raw, exit_code=1)
+
+        self.assertEqual(summary["error_redactions"], 1)
+        self.assertNotIn("sk-ant-", summary["error"])
+        self.assertLessEqual(len(summary["error"]), 4096)
+
     def test_advisory_is_isolated_and_writes_owner_only_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -644,8 +669,8 @@ class AdvisoryTests(unittest.TestCase):
             doctor_result = {
                 "claude": {
                     "path": "/fake/claude",
-                    "version": "2.1.209",
-                    "highest_behavior_tested": "2.1.209",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
                 },
                 "warnings": [],
             }

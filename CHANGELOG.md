@@ -27,6 +27,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Classified moving-alias and dated identifiers within the requested model family as primary while continuing to reject every different-family auxiliary model.
 - Added redacted `claude-failure.json` diagnostics for non-zero Claude exits and prohibited automatic model fallback after failure.
 - Replaced remove/re-add update guidance with the supported Git-marketplace upgrade command, a fresh-task boundary, and a clear separation between GitHub releases and reviewed OpenAI Plugin Directory updates.
+- Raised the minimum Claude Code version to 2.1.210, the release behavior-tested for mandatory verbose stream-model telemetry, and redacted provider failure text before applying the diagnostic length bound.
 
 ### Migration
 

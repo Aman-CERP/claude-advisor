@@ -332,6 +332,10 @@ def validate_update_lifecycle() -> None:
     runner = (PLUGIN / "scripts" / "second_opinion.py").read_text(encoding="utf-8")
     require('"--check-update"' in runner, "runner is missing explicit update check")
     require(
+        "MIN_CLAUDE = (2, 1, 210)" in runner,
+        "minimum Claude version must match the stream-telemetry baseline",
+    )
+    require(
         'UPDATE_ENDPOINT = f"repos/{UPDATE_REPOSITORY}/releases/latest"' in runner,
         "runner update endpoint must remain fixed",
     )

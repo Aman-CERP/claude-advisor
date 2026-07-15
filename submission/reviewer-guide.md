@@ -6,7 +6,7 @@ Second Opinion by AmanERP is a skills-only plugin for local Codex workflows. It 
 
 - Local Codex on macOS or Linux
 - Python 3.11 or newer
-- Claude Code 2.1.209 or newer for optional live inference; 2.1.210 is the highest behavior-tested release
+- Claude Code 2.1.210 or newer for optional live inference; 2.1.210 is the highest behavior-tested release
 - GitHub CLI 2.x only for the public-PR test or optional explicit update check
 
 The plugin is not functional in ChatGPT web, Codex cloud, mobile, or Windows-native environments because those surfaces cannot satisfy its documented local-process contract.

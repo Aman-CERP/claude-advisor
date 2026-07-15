@@ -27,7 +27,7 @@ from typing import Any, Literal, NoReturn
 PLUGIN_VERSION = "0.2.0"
 SCHEMA_VERSION = "2"
 MIN_PYTHON = (3, 11)
-MIN_CLAUDE = (2, 1, 209)
+MIN_CLAUDE = (2, 1, 210)
 HIGHEST_TESTED_CLAUDE = (2, 1, 210)
 MAX_SINGLE_FILE_BYTES = 6 * 1024 * 1024
 MAX_INPUT_BYTES = 8 * 1024 * 1024
@@ -1305,8 +1305,9 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
 
     error_message = terminal.get("result") if terminal else None
     sanitized_error, error_redactions = redact(
-        error_message[:4096] if isinstance(error_message, str) else ""
+        error_message if isinstance(error_message, str) else ""
     )
+    sanitized_error = sanitized_error[:4096]
     return {
         "exit_code": exit_code,
         "stdout_bytes": len(raw),

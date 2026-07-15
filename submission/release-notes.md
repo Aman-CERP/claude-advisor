@@ -8,6 +8,6 @@ Both skills now default to an enforced Opus/high deep profile, while critical wo
 
 Update discovery is explicit and off by default. An operator may run `doctor --check-update` to read the latest stable GitHub release through their authenticated GitHub CLI; the command sends no review content or telemetry and never changes plugin state. Git-marketplace updates use `codex plugin marketplace upgrade amanerp` followed by a fresh Codex task. Public-directory revisions remain separately reviewed update submissions.
 
-The plugin requires local Codex, Python 3.11+, and the user's separately installed and authenticated Claude Code CLI. GitHub CLI is needed only for GitHub pull-request mode or the optional explicit update check. It does not contain an MCP app or hosted service and is not available in ChatGPT web or Codex cloud.
+The plugin requires local Codex, Python 3.11+, and the user's separately installed and authenticated Claude Code 2.1.210+ CLI. Version 2.1.210 is the behavior-tested baseline for mandatory verbose stream-model telemetry. GitHub CLI is needed only for GitHub pull-request mode or the optional explicit update check. It does not contain an MCP app or hosted service and is not available in ChatGPT web or Codex cloud.
 
 Migration from v0.1 is intentionally explicit: remove `claude-advisor@aman-cerp`, refresh the renamed `Aman-CERP/amanerp-second-opinion` marketplace, then install `amanerp-second-opinion@amanerp`. Existing local v0.1 run artifacts are not moved or deleted.

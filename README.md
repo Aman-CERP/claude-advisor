@@ -18,7 +18,7 @@ Second Opinion by AmanERP is an independent project. AmanERP is not affiliated w
 - macOS or Linux.
 - Python 3.11 or newer.
 - A Codex release with plugin marketplace support.
-- Claude Code 2.1.209 or newer, separately installed and authenticated by the user. Version 2.1.210 is the currently behavior-tested isolation baseline; later versions produce a warning until their no-tools behavior is reverified.
+- Claude Code 2.1.210 or newer, separately installed and authenticated by the user. Version 2.1.210 is the currently behavior-tested isolation and stream-telemetry baseline; later versions produce a warning until their behavior is reverified.
 - GitHub CLI 2.x, authenticated locally, for GitHub pull-request mode or the optional explicit update check.
 
 Install and authenticate Claude Code using [Anthropic's setup guide](https://docs.anthropic.com/en/docs/claude-code/getting-started). Every user must use their own Claude account or an organization-approved first-party Anthropic credential. The plugin does not share credentials, proxy requests, or support custom model gateways and cloud-provider modes.
