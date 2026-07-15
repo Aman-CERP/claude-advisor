@@ -27,7 +27,7 @@ With Codex CLI installed, `make marketplace-update-smoke` additionally creates a
 temporary Git marketplace and temporary `CODEX_HOME`, installs v1.0.0, publishes
 a loopback-only v1.1.0 fixture, refreshes the marketplace, and proves the enabled
 cache moved to v1.1.0. It does not read or alter the reviewer's real Codex home.
-For a tag candidate, `make release-contract TAG=v0.2.0` proves all version-bearing
+For a tag candidate, `make release-contract TAG=v0.2.1` proves all version-bearing
 release artifacts agree.
 
 Validate the packaged plugin with OpenAI's current local validators:
@@ -52,7 +52,7 @@ Use only the reviewer's own Claude Code account and applicable Anthropic terms. 
 5. Inspect `report.md`, `result.json`, and `receipt.json` in the printed run directory.
 6. Confirm the receipt records read-only isolation controls, the expected source hash or PR object IDs, an Opus `primary_model_observed` for deep/critical cases, and no auxiliary model.
 
-The default `deep` profile uses Opus/high and `--critical` uses Opus/xhigh. Sonnet/high is available only with `--quality standard --acknowledge-standard-quality`; it must never be used as an automatic retry after an Opus failure.
+The default `deep` profile uses Opus/high and `--critical` uses Opus/xhigh. Sonnet/high is available only with `--quality standard --acknowledge-standard-quality`; it must never be used as an automatic retry after an Opus failure. A second same-model attempt requires `--structured-output-attempts 2 --acknowledge-retry-cost`, is limited to structured-output exhaustion, and remains inside aggregate budget and timeout ceilings.
 
 Do not include private repository content, personal data, or credentials in reviewer prompts. The supplied fixtures are synthetic or public.
 

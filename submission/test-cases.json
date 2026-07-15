@@ -20,7 +20,7 @@
       ],
       "expected_result_shape": [
         "A compact JSON stdout summary containing run_dir, result_path, report_path, and receipt_path",
-        "A schema-valid result with facts, assumptions, options, material risks, recommendation, open questions, and validation steps",
+        "A schema-valid shallow result with verdict, confidence, executive summary, Markdown analysis of facts, assumptions, options and open questions, material risks, conditions that change the verdict, and validation steps",
         "A local receipt with outcome success, quality_profile deep, an Opus primary_model_observed, no auxiliary model, and true safe_mode, tools_disabled, chrome_disabled, and session_persistence_disabled controls"
       ]
     },

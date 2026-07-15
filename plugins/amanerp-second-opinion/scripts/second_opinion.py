@@ -23,9 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NoReturn
 
-
-PLUGIN_VERSION = "0.2.0"
-SCHEMA_VERSION = "2"
+PLUGIN_VERSION = "0.2.1"
+SCHEMA_VERSION = "3"
 MIN_PYTHON = (3, 11)
 MIN_CLAUDE = (2, 1, 210)
 HIGHEST_TESTED_CLAUDE = (2, 1, 210)
@@ -126,6 +125,7 @@ SUPPORTED_SCHEMA_KEYS = {
     "maxItems",
     "minimum",
     "maximum",
+    "description",
 }
 
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -986,6 +986,8 @@ def validate_common_options(
         if args.max_budget_usd is not None
         else defaults["max_budget_usd"]
     )
+    structured_output_attempts = args.structured_output_attempts
+    retry_cost_acknowledged = bool(args.acknowledge_retry_cost)
     model = defaults["model"]
     effort = defaults["effort"]
     if not 60 <= timeout <= 1800:
@@ -1004,6 +1006,30 @@ def validate_common_options(
             "max budget must be between USD 0.10 and USD 20.00",
             outcome="rejected",
         )
+    if structured_output_attempts not in (1, 2):
+        raise AdvisorError(
+            EXIT_USAGE,
+            "structured output attempts must be 1 or 2",
+            outcome="rejected",
+        )
+    if structured_output_attempts == 2 and not retry_cost_acknowledged:
+        raise AdvisorError(
+            EXIT_USAGE,
+            "--structured-output-attempts 2 requires --acknowledge-retry-cost",
+            outcome="rejected",
+        )
+    if structured_output_attempts == 1 and retry_cost_acknowledged:
+        raise AdvisorError(
+            EXIT_USAGE,
+            "--acknowledge-retry-cost is only valid with --structured-output-attempts 2",
+            outcome="rejected",
+        )
+    if structured_output_attempts == 2 and budget < 0.20:
+        raise AdvisorError(
+            EXIT_USAGE,
+            "two structured output attempts require at least USD 0.20 aggregate budget",
+            outcome="rejected",
+        )
     return {
         "timeout": timeout,
         "max_turns": turns,
@@ -1012,6 +1038,9 @@ def validate_common_options(
         "effort": effort,
         "quality_profile": quality,
         "standard_quality_acknowledged": standard_acknowledged,
+        "structured_output_attempts": structured_output_attempts,
+        "retry_cost_acknowledged": retry_cost_acknowledged,
+        "per_attempt_budget_usd": budget / structured_output_attempts,
     }
 
 
@@ -1208,21 +1237,27 @@ def collect_model_telemetry(
         normalized_usage.append(
             {
                 "model": model,
-                "role": "primary"
-                if model_matches_family(model, requested_family)
-                else "auxiliary",
-                "input_tokens": input_tokens
-                if valid_nonnegative_integer(input_tokens)
-                else None,
-                "output_tokens": output_tokens
-                if valid_nonnegative_integer(output_tokens)
-                else None,
-                "cache_read_input_tokens": usage.get("cacheReadInputTokens")
-                if valid_nonnegative_integer(usage.get("cacheReadInputTokens"))
-                else 0,
-                "cache_creation_input_tokens": usage.get("cacheCreationInputTokens")
-                if valid_nonnegative_integer(usage.get("cacheCreationInputTokens"))
-                else 0,
+                "role": (
+                    "primary"
+                    if model_matches_family(model, requested_family)
+                    else "auxiliary"
+                ),
+                "input_tokens": (
+                    input_tokens if valid_nonnegative_integer(input_tokens) else None
+                ),
+                "output_tokens": (
+                    output_tokens if valid_nonnegative_integer(output_tokens) else None
+                ),
+                "cache_read_input_tokens": (
+                    usage.get("cacheReadInputTokens")
+                    if valid_nonnegative_integer(usage.get("cacheReadInputTokens"))
+                    else 0
+                ),
+                "cache_creation_input_tokens": (
+                    usage.get("cacheCreationInputTokens")
+                    if valid_nonnegative_integer(usage.get("cacheCreationInputTokens"))
+                    else 0
+                ),
                 "cost_usd": cost_usd if valid_nonnegative_number(cost_usd) else None,
             }
         )
@@ -1246,6 +1281,10 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
     events: list[dict[str, Any]] = []
     malformed_lines = 0
     event_types: dict[str, int] = {}
+    system_subtypes: dict[str, int] = {}
+    assistant_stop_reasons: dict[str, int] = {}
+    structured_output_tool_attempts = 0
+    correction_events = 0
     for line in text.splitlines():
         if not line.strip():
             continue
@@ -1265,6 +1304,34 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
         ):
             event_type = "unknown"
         event_types[event_type] = event_types.get(event_type, 0) + 1
+        if event_type == "system":
+            subtype = event.get("subtype")
+            if not (
+                isinstance(subtype, str)
+                and re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", subtype)
+            ):
+                subtype = "unknown"
+            system_subtypes[subtype] = system_subtypes.get(subtype, 0) + 1
+        if event_type == "assistant" and isinstance(event.get("message"), dict):
+            message = event["message"]
+            stop_reason = message.get("stop_reason")
+            if isinstance(stop_reason, str) and re.fullmatch(
+                r"[a-z][a-z0-9_-]{0,63}", stop_reason
+            ):
+                assistant_stop_reasons[stop_reason] = (
+                    assistant_stop_reasons.get(stop_reason, 0) + 1
+                )
+            content = message.get("content")
+            if isinstance(content, list):
+                structured_output_tool_attempts += sum(
+                    1
+                    for block in content
+                    if isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "StructuredOutput"
+                )
+        if event_type == "user":
+            correction_events += 1
 
     terminal = next(
         (event for event in reversed(events) if event.get("type") == "result"), None
@@ -1279,6 +1346,10 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
             "terminal_reason",
             "stop_reason",
             "session_id",
+            "duration_ms",
+            "duration_api_ms",
+            "num_turns",
+            "total_cost_usd",
         ):
             value = terminal.get(key)
             if isinstance(value, str) and len(value) <= 256:
@@ -1291,35 +1362,85 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
                 safe_terminal[key] = value
 
     observed_models: set[str] = set()
+    initialized_models: set[str] = set()
+    assistant_models: set[str] = set()
     for event in events:
         candidates: list[Any] = []
         if event.get("type") == "system":
             candidates.append(event.get("model"))
+            if event.get("subtype") == "init" and (
+                model := safe_model_id(event.get("model"))
+            ):
+                initialized_models.add(model)
         if event.get("type") == "assistant" and isinstance(event.get("message"), dict):
             candidates.append(event["message"].get("model"))
+            if model := safe_model_id(event["message"].get("model")):
+                assistant_models.add(model)
         if event.get("type") == "result" and isinstance(event.get("modelUsage"), dict):
             candidates.extend(event["modelUsage"].keys())
         observed_models.update(
             model for candidate in candidates if (model := safe_model_id(candidate))
         )
 
-    error_message = terminal.get("result") if terminal else None
-    sanitized_error, error_redactions = redact(
-        error_message if isinstance(error_message, str) else ""
-    )
-    sanitized_error = sanitized_error[:4096]
+    normalized_usage: list[dict[str, Any]] = []
+    if terminal is not None and isinstance(terminal.get("modelUsage"), dict):
+        for raw_model, raw_usage in terminal["modelUsage"].items():
+            model = safe_model_id(raw_model)
+            if model is None or not isinstance(raw_usage, dict):
+                continue
+            normalized_usage.append(
+                {
+                    "model": model,
+                    "input_tokens": (
+                        raw_usage.get("inputTokens")
+                        if valid_nonnegative_integer(raw_usage.get("inputTokens"))
+                        else None
+                    ),
+                    "output_tokens": (
+                        raw_usage.get("outputTokens")
+                        if valid_nonnegative_integer(raw_usage.get("outputTokens"))
+                        else None
+                    ),
+                    "cost_usd": (
+                        raw_usage.get("costUSD")
+                        if valid_nonnegative_number(raw_usage.get("costUSD"))
+                        else None
+                    ),
+                }
+            )
+
+    terminal_result_omitted = terminal is not None and "result" in terminal
     return {
         "exit_code": exit_code,
         "stdout_bytes": len(raw),
         "event_count": len(events),
         "malformed_event_lines": malformed_lines,
         "event_types": dict(sorted(event_types.items())),
+        "system_subtypes": dict(sorted(system_subtypes.items())),
+        "assistant_stop_reasons": dict(sorted(assistant_stop_reasons.items())),
+        "structured_output_tool_attempts": structured_output_tool_attempts,
+        "correction_events": correction_events,
         "terminal": safe_terminal,
         "terminal_redactions": terminal_redactions,
         "models_observed": sorted(observed_models),
-        "error": sanitized_error,
-        "error_redactions": error_redactions,
+        "initialized_models_observed": sorted(initialized_models),
+        "assistant_models_observed": sorted(assistant_models),
+        "model_usage": normalized_usage,
+        "terminal_result_omitted": terminal_result_omitted,
     }
+
+
+def classify_failed_stream(summary: dict[str, Any]) -> tuple[str, str]:
+    terminal = summary.get("terminal")
+    if isinstance(terminal, dict) and (
+        terminal.get("subtype") == "error_max_structured_output_retries"
+        or terminal.get("terminal_reason") == "structured_output_retry_exhausted"
+    ):
+        return (
+            "structured_output_retry_exhausted",
+            "Claude exhausted its structured output retries",
+        )
+    return "claude_failed", "Claude analysis failed"
 
 
 def render_list(items: list[str]) -> list[str]:
@@ -1327,65 +1448,32 @@ def render_list(items: list[str]) -> list[str]:
 
 
 def render_advisory(result: dict[str, Any]) -> str:
-    recommendation = result["recommendation"]
-    lines = [
-        "# Claude advisory",
-        "",
-        f"Status: **{result['status']}**  ",
-        f"Confidence: **{recommendation['confidence']}**",
-        "",
-        "## Executive summary",
-        "",
-        result["executive_summary"],
-        "",
-        "## Recommendation",
-        "",
-        f"**{recommendation['choice']}** — {recommendation['rationale']}",
-        "",
-        "### Conditions that would change it",
-        "",
-        *render_list(recommendation["conditions_that_change_it"]),
-        "",
-        "## Facts",
-        "",
-    ]
-    for fact in result["facts"]:
-        evidence = (
-            ", ".join(fact["evidence"]) if fact["evidence"] else "no evidence reference"
-        )
-        lines.append(f"- {fact['claim']} _(evidence: {evidence})_")
-    if not result["facts"]:
-        lines.append("- None established.")
-    lines.extend(["", "## Options", ""])
-    for option in result["options"]:
-        lines.extend(
-            [
-                f"### {option['name']}",
-                "",
-                "Benefits:",
-                *render_list(option["benefits"]),
-                "",
-                "Drawbacks:",
-                *render_list(option["drawbacks"]),
-                "",
-                "Risks:",
-                *render_list(option["risks"]),
-                "",
-            ]
-        )
-    lines.extend(
+    return "\n".join(
         [
+            "# Claude advisory",
+            "",
+            f"Status: **{result['status']}**  ",
+            f"Confidence: **{result['confidence']}**",
+            "",
+            "## Verdict",
+            "",
+            result["verdict"],
+            "",
+            "## Executive summary",
+            "",
+            result["executive_summary"],
+            "",
+            "## Analysis",
+            "",
+            result["analysis"],
+            "",
             "## Material risks",
             "",
             *render_list(result["material_risks"]),
             "",
-            "## Assumptions",
+            "## Conditions that would change the verdict",
             "",
-            *render_list(result["assumptions"]),
-            "",
-            "## Open questions",
-            "",
-            *render_list(result["open_questions"]),
+            *render_list(result["conditions_that_change_it"]),
             "",
             "## Validation steps",
             "",
@@ -1393,7 +1481,6 @@ def render_advisory(result: dict[str, Any]) -> str:
             "",
         ]
     )
-    return "\n".join(lines)
 
 
 def render_pr_review(result: dict[str, Any]) -> str:
@@ -1491,11 +1578,19 @@ def execute_claude(
             "model_requested": limits["model"],
             "effort": limits["effort"],
             "standard_quality_acknowledged": limits["standard_quality_acknowledged"],
+            "attempts": [],
         },
         "resource_limits": {
             "timeout_seconds": limits["timeout"],
             "max_turns": limits["max_turns"],
             "budget_requested_usd": limits["max_budget_usd"],
+            "per_attempt_budget_requested_usd": limits["per_attempt_budget_usd"],
+            "structured_output_attempts_authorized": limits[
+                "structured_output_attempts"
+            ],
+            "retry_cost_acknowledged": limits["retry_cost_acknowledged"],
+            "attempts_started": 0,
+            "retry_triggered": False,
             "max_input_bytes": MAX_INPUT_BYTES,
         },
         "controls": {
@@ -1527,100 +1622,183 @@ def execute_claude(
         "receipt": str(receipt_path),
     }
 
-    command = [
-        doctor_result["claude"]["path"],
-        "--print",
-        "--safe-mode",
-        "--tools",
-        "",
-        "--no-chrome",
-        "--no-session-persistence",
-        "--name",
-        f"amanerp-second-opinion-{kind}",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--json-schema",
-        compact_json(schema),
-        "--max-turns",
-        str(limits["max_turns"]),
-        "--max-budget-usd",
-        f"{limits['max_budget_usd']:.2f}",
-        "--model",
-        limits["model"],
-        "--effort",
-        limits["effort"],
-        prompt,
-    ]
-
     try:
-        try:
-            claude_exit_code, claude_stdout, claude_stderr = run_bounded_process(
-                command,
-                child_kind="claude",
-                input_bytes=untrusted_input.encode("utf-8"),
-                timeout=limits["timeout"],
-                max_stdout_bytes=MAX_STDOUT_BYTES,
-                max_stderr_bytes=MAX_CHILD_STDERR_BYTES,
-            )
-        except BoundedProcessError as exc:
-            timeout_stderr, redactions = redact(exc.stderr)
-            atomic_write_text(stderr_path, timeout_stderr)
-            receipt["stderr_redactions"] = redactions
-            if exc.reason == "limit" and exc.stream_name == "stdout":
+        events: list[dict[str, Any]]
+        envelope: dict[str, Any]
+        failed_reported_cost = 0.0
+        accumulated_stderr = ""
+        total_redactions = 0
+        failure_paths: list[str] = []
+        for attempt_number in range(1, limits["structured_output_attempts"] + 1):
+            elapsed = time.monotonic() - start_monotonic
+            remaining_timeout = limits["timeout"] - elapsed
+            if remaining_timeout <= 0:
                 raise AdvisorError(
-                    EXIT_INVALID_RESULT,
-                    "Claude response exceeds the output byte limit",
-                    outcome="invalid_result",
+                    EXIT_TIMEOUT,
+                    "Claude analysis timed out",
+                    outcome="timeout",
+                )
+            receipt["resource_limits"]["attempts_started"] = attempt_number
+            command = [
+                doctor_result["claude"]["path"],
+                "--print",
+                "--safe-mode",
+                "--tools",
+                "",
+                "--no-chrome",
+                "--no-session-persistence",
+                "--name",
+                f"amanerp-second-opinion-{kind}",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--json-schema",
+                compact_json(schema),
+                "--max-turns",
+                str(limits["max_turns"]),
+                "--max-budget-usd",
+                f"{limits['per_attempt_budget_usd']:.2f}",
+                "--model",
+                limits["model"],
+                "--effort",
+                limits["effort"],
+                prompt,
+            ]
+            try:
+                claude_exit_code, claude_stdout, claude_stderr = run_bounded_process(
+                    command,
+                    child_kind="claude",
+                    input_bytes=untrusted_input.encode("utf-8"),
+                    timeout=remaining_timeout,
+                    max_stdout_bytes=MAX_STDOUT_BYTES,
+                    max_stderr_bytes=MAX_CHILD_STDERR_BYTES,
+                )
+            except BoundedProcessError as exc:
+                timeout_stderr, redactions = redact(exc.stderr)
+                atomic_write_text(stderr_path, accumulated_stderr + timeout_stderr)
+                receipt["stderr_redactions"] = total_redactions + redactions
+                if exc.reason == "limit" and exc.stream_name == "stdout":
+                    raise AdvisorError(
+                        EXIT_INVALID_RESULT,
+                        "Claude response exceeds the output byte limit",
+                        outcome="invalid_result",
+                        stderr_text=timeout_stderr,
+                    ) from exc
+                if exc.reason == "limit":
+                    raise AdvisorError(
+                        EXIT_CLAUDE,
+                        "Claude diagnostics exceeded the output byte limit",
+                        outcome="claude_failed",
+                        stderr_text=timeout_stderr,
+                    ) from exc
+                if exc.reason == "start_failed":
+                    raise AdvisorError(
+                        EXIT_CLAUDE,
+                        "Claude analysis could not start",
+                        outcome="claude_failed",
+                        stderr_text=timeout_stderr,
+                    ) from exc
+                if exc.reason == "io_error":
+                    raise AdvisorError(
+                        EXIT_CLAUDE,
+                        "Claude analysis I/O failed",
+                        outcome="claude_failed",
+                        stderr_text=timeout_stderr,
+                    ) from exc
+                raise AdvisorError(
+                    EXIT_TIMEOUT,
+                    "Claude analysis timed out",
+                    outcome="timeout",
                     stderr_text=timeout_stderr,
                 ) from exc
-            if exc.reason == "limit":
-                raise AdvisorError(
-                    EXIT_CLAUDE,
-                    "Claude diagnostics exceeded the output byte limit",
-                    outcome="claude_failed",
-                    stderr_text=timeout_stderr,
-                ) from exc
-            if exc.reason == "start_failed":
-                raise AdvisorError(
-                    EXIT_CLAUDE,
-                    "Claude analysis could not start",
-                    outcome="claude_failed",
-                    stderr_text=timeout_stderr,
-                ) from exc
-            if exc.reason == "io_error":
-                raise AdvisorError(
-                    EXIT_CLAUDE,
-                    "Claude analysis I/O failed",
-                    outcome="claude_failed",
-                    stderr_text=timeout_stderr,
-                ) from exc
-            raise AdvisorError(
-                EXIT_TIMEOUT,
-                "Claude analysis timed out",
-                outcome="timeout",
-                stderr_text=timeout_stderr,
-            ) from exc
 
-        sanitized_stderr, redactions = redact(claude_stderr)
-        atomic_write_text(stderr_path, sanitized_stderr)
-        receipt["stderr_redactions"] = redactions
-        receipt["claude_exit_code"] = claude_exit_code
-        if claude_exit_code != 0:
-            failure_path = run_dir / "claude-failure.json"
+            sanitized_stderr, redactions = redact(claude_stderr)
+            accumulated_stderr += sanitized_stderr
+            total_redactions += redactions
+            atomic_write_text(stderr_path, accumulated_stderr)
+            receipt["stderr_redactions"] = total_redactions
+            receipt["claude_exit_code"] = claude_exit_code
+            if claude_exit_code == 0:
+                events, envelope = parse_claude_stream(claude_stdout)
+                break
+
             failure_summary = summarize_failed_stream(
                 claude_stdout, exit_code=claude_exit_code
             )
+            failure_outcome, failure_message = classify_failed_stream(failure_summary)
+            initialized_models = failure_summary["initialized_models_observed"]
+            assistant_models = failure_summary["assistant_models_observed"]
+            usage_models = [item["model"] for item in failure_summary["model_usage"]]
+            failure_model_policy_verified = (
+                len(initialized_models) == 1
+                and len(assistant_models) == 1
+                and any(
+                    model_matches_family(model, limits["model"])
+                    for model in usage_models
+                )
+                and all(
+                    model_matches_family(model, limits["model"])
+                    for model in (initialized_models + assistant_models + usage_models)
+                )
+            )
+            if not failure_model_policy_verified:
+                failure_outcome = "model_policy_violation"
+                failure_message = (
+                    "Claude model usage violated the selected quality profile"
+                )
+            attempt_record = {
+                "attempt": attempt_number,
+                "exit_code": claude_exit_code,
+                "outcome": failure_outcome,
+                "terminal": failure_summary["terminal"],
+                "models_observed": failure_summary["models_observed"],
+                "model_usage": failure_summary["model_usage"],
+                "model_policy_verified": failure_model_policy_verified,
+            }
+            receipt["claude"]["attempts"].append(attempt_record)
+            receipt["claude"]["models_observed"] = failure_summary["models_observed"]
+
+            if limits["structured_output_attempts"] > 1:
+                attempt_failure_path = (
+                    run_dir / f"claude-failure-attempt-{attempt_number}.json"
+                )
+                atomic_write_json(attempt_failure_path, failure_summary)
+                failure_paths.append(str(attempt_failure_path))
+                receipt["artifacts"]["claude_failures"] = failure_paths
+
+            terminal = failure_summary["terminal"]
+            failure_turns = terminal.get("num_turns")
+            failure_cost = terminal.get("total_cost_usd")
+            retry_usage_valid = (
+                valid_nonnegative_integer(failure_turns)
+                and valid_nonnegative_number(failure_cost)
+                and failure_turns <= limits["max_turns"]
+                and failure_cost <= limits["per_attempt_budget_usd"]
+            )
+            if (
+                failure_outcome == "structured_output_retry_exhausted"
+                and attempt_number < limits["structured_output_attempts"]
+                and retry_usage_valid
+            ):
+                failed_reported_cost += float(failure_cost)
+                receipt["resource_limits"]["retry_triggered"] = True
+                continue
+
+            failure_path = run_dir / "claude-failure.json"
             atomic_write_json(failure_path, failure_summary)
             receipt["artifacts"]["claude_failure"] = str(failure_path)
-            receipt["claude"]["models_observed"] = failure_summary["models_observed"]
             raise AdvisorError(
                 EXIT_CLAUDE,
-                "Claude analysis failed",
-                outcome="claude_failed",
+                failure_message,
+                outcome=failure_outcome,
                 stderr_text=sanitized_stderr,
             )
-        events, envelope = parse_claude_stream(claude_stdout)
+        else:
+            raise AdvisorError(
+                EXIT_INTERNAL,
+                "structured output attempt loop ended unexpectedly",
+                outcome="internal_error",
+            )
 
         response_path = run_dir / "claude-response.json"
         atomic_write_json(response_path, envelope)
@@ -1647,6 +1825,9 @@ def execute_claude(
                 "duration_api_ms": envelope.get("duration_api_ms"),
                 "num_turns": reported_turns,
                 "reported_cost_usd": reported_cost,
+                "aggregate_reported_cost_usd": (
+                    failed_reported_cost + reported_cost if cost_observed else None
+                ),
                 "turn_enforcement_observed": turns_observed,
                 "budget_enforcement_observed": cost_observed,
                 **model_telemetry,
@@ -1672,7 +1853,9 @@ def execute_claude(
                 "Claude exceeded the requested turn ceiling",
                 outcome="ceiling_breach",
             )
-        if reported_cost > limits["max_budget_usd"]:
+        if reported_cost > limits["per_attempt_budget_usd"] or (
+            failed_reported_cost + reported_cost > limits["max_budget_usd"]
+        ):
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude exceeded the requested cost ceiling",
@@ -1680,6 +1863,17 @@ def execute_claude(
             )
         result = extract_structured_output(envelope)
         validate_result(result, schema)
+        receipt["claude"]["attempts"].append(
+            {
+                "attempt": attempt_number,
+                "exit_code": claude_exit_code,
+                "outcome": "success",
+                "session_id": envelope.get("session_id"),
+                "num_turns": reported_turns,
+                "reported_cost_usd": reported_cost,
+                "models_observed": model_telemetry["models_observed"],
+            }
+        )
         result_path = run_dir / "result.json"
         report_path = run_dir / "report.md"
         atomic_write_json(result_path, result)
@@ -1690,15 +1884,17 @@ def execute_claude(
 
         receipt["outcome"] = "success"
         receipt["result_sha256"] = sha256_text(compact_json(result))
-        receipt["artifacts"] = {
-            "request": str(request_path),
-            "input_hash": str(input_hash_path),
-            "claude_response": str(response_path),
-            "result": str(result_path),
-            "report": str(report_path),
-            "stderr": str(stderr_path),
-            "receipt": str(receipt_path),
-        }
+        receipt["artifacts"].update(
+            {
+                "request": str(request_path),
+                "input_hash": str(input_hash_path),
+                "claude_response": str(response_path),
+                "result": str(result_path),
+                "report": str(report_path),
+                "stderr": str(stderr_path),
+                "receipt": str(receipt_path),
+            }
+        )
         return_payload = {
             "status": "success",
             "run_dir": str(run_dir),
@@ -2044,9 +2240,11 @@ def run_pr_review(args: argparse.Namespace) -> dict[str, Any]:
             "number": metadata["number"],
             "title": metadata["title"],
             "url": metadata["url"],
-            "author": metadata.get("author", {}).get("login")
-            if isinstance(metadata.get("author"), dict)
-            else None,
+            "author": (
+                metadata.get("author", {}).get("login")
+                if isinstance(metadata.get("author"), dict)
+                else None
+            ),
             "base_ref": metadata["baseRefName"],
             "head_ref": metadata["headRefName"],
             "base_oid": metadata["baseRefOid"],
@@ -2133,6 +2331,10 @@ def add_common_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-turns", type=int)
     parser.add_argument("--max-budget-usd", type=float)
     parser.add_argument("--timeout", type=int)
+    parser.add_argument(
+        "--structured-output-attempts", type=int, choices=(1, 2), default=1
+    )
+    parser.add_argument("--acknowledge-retry-cost", action="store_true")
     parser.add_argument("--allow-sensitive-input", action="store_true")
 
 

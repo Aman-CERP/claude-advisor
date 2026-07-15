@@ -1,6 +1,6 @@
 {
   "name": "amanerp-second-opinion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Safety-first independent advisory and pull-request reviews for local Codex workflows",
   "author": {
     "name": "AmanERP",

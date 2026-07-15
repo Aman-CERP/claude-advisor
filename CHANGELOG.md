@@ -4,6 +4,26 @@ All notable changes are documented here. The project follows Semantic Versioning
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-15
+
+### Added
+
+- Precise `structured_output_retry_exhausted` failure classification with bounded event, subtype, correction, tool-attempt, usage, and model diagnostics that retain no partial structured response.
+- An explicitly authorized two-attempt mode that retries only the same model after structured-output exhaustion, splits the aggregate budget, and preserves the aggregate parent timeout.
+- Regression coverage for the observed six-response/five-correction failure shape and decision questions that previously embedded a competing output contract.
+- Fail-closed failed-attempt model telemetry verification so an Opus retry cannot proceed after any observed downgrade or auxiliary-family use.
+
+### Changed
+
+- Flattened the advisory schema to a stable closed envelope with one rich Markdown analysis field while preserving facts, options, controls, risks, estimate, and ADR reasoning requirements.
+- Clarified that the question is the bounded decision, context is evidence, and the bundled JSON Schema is the sole machine-output contract.
+- Bumped receipts to schema 3 with authorized attempts, attempts started, retry status, per-attempt budget, and safe attempt records.
+
+### Migration
+
+- Advisory `result.json` is intentionally schema-breaking: nested `facts`, `assumptions`, `options`, `recommendation`, and `open_questions` move into the Markdown `analysis` field, with top-level `verdict`, `confidence`, and `conditions_that_change_it`. Consumers must update before reading v0.2.1 advisory results.
+- Two-attempt mode replays an identical request and halves the configured aggregate budget per attempt; it is intended only for explicitly authorized recovery from a transient structured-output failure.
+
 ## [0.2.0] - 2026-07-14
 
 ### Added
@@ -45,6 +65,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Sensitive-input screening, local schema validation, redacted diagnostics, and owner-only run artifacts.
 - Deterministic release packaging, public CI, and Codex marketplace distribution.
 
-[Unreleased]: https://github.com/Aman-CERP/amanerp-second-opinion/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Aman-CERP/amanerp-second-opinion/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Aman-CERP/amanerp-second-opinion/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Aman-CERP/amanerp-second-opinion/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Aman-CERP/amanerp-second-opinion/releases/tag/v0.1.0

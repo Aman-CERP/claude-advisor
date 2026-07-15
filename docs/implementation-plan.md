@@ -1,6 +1,6 @@
-# Second Opinion by AmanERP v0.2.0 — Publication Hardening Plan
+# Second Opinion by AmanERP v0.2.1 — Structured-Output Reliability Plan
 
-Status: Implemented; human-controlled publication gates remain
+Status: Implemented; release and upgrade verification in progress; OpenAI publication remains intentionally deferred
 Date: 2026-07-14
 Last amended: 2026-07-15
 Owner: AmanERP maintainers
@@ -76,6 +76,37 @@ This release preserves the v0.1 runtime trust boundary while replacing the publi
    installation, and opt-in live update checks. Dogfood the installed Opus
    critical PR-review skill against the immutable PR head, reconcile every
    critical/high/medium finding, and rerun after material fixes.
+
+### Phase H — v0.2.1 structured-output reliability
+
+1. Record the failure contract before code: the bounded question is the task,
+   context is evidence, the bundled schema is the sole machine-output contract,
+   and structured-output retries are never silent or cross-model.
+2. Add failing tests and a representative decision fixture for a Claude
+   `error_max_structured_output_retries` terminal event, safe diagnostic counts,
+   competing output-format prose, retry authorization, budget splitting, one
+   same-model retry, and no retry for unrelated errors.
+3. Flatten the advisory schema into a closed scalar/string-array envelope with a
+   single rich Markdown analysis field. Add schema descriptions and update the
+   local validator, prompt, renderer, skills, examples, and submission materials
+   as one contract change.
+4. Classify structured-output retry exhaustion distinctly. Retain only bounded,
+   non-content diagnostics: event/subtype counts, tool-attempt and correction
+   counts, terminal usage metadata, and observed model identities.
+5. Add an opt-in two-attempt mode requiring explicit cost acknowledgment. Keep
+   model, effort, prompt, schema, input, isolation controls, and turn ceiling
+   identical; divide the aggregate budget equally and enforce one aggregate
+   parent timeout. Do not retry any other outcome.
+6. Bump receipt schema and plugin patch version; update changelog, release notes,
+   validators, packaging, and compatibility documentation.
+7. Run unit/integration tests, `make check`, deterministic packaging, official
+   plugin/skill validators, a skill forward-test, and live Opus critical PR
+   dogfood. Address every critical/high/medium finding and rerun after material
+   fixes.
+8. Merge only after CI is green; create immutable `v0.2.1` release assets, upgrade
+   the AmanERP Git marketplace installation, verify version visibility across
+   team checkouts, then rerun the cleaned Team A advisory with the explicitly
+   authorized two-attempt critical profile.
 
 ## V0.2 rollback
 

@@ -1,6 +1,6 @@
 # Update and release policy
 
-Status: Active for v0.2.0
+Status: Active for v0.2.1
 
 Last verified: 2026-07-15
 

@@ -1,109 +1,40 @@
 {
   "type": "object",
+  "description": "A bounded independent advisory. Rich reasoning belongs in analysis, not additional fields.",
   "properties": {
     "status": {
       "type": "string",
+      "description": "Whether the supplied evidence supports a bounded opinion.",
       "enum": ["completed", "unable_to_advise"]
     },
+    "verdict": {
+      "type": "string",
+      "description": "The recommended decision or the concise reason advice is not supportable."
+    },
+    "confidence": {
+      "type": "string",
+      "description": "Confidence in the verdict given only the supplied evidence.",
+      "enum": ["low", "medium", "high"]
+    },
     "executive_summary": {
-      "type": "string"
+      "type": "string",
+      "description": "A concise decision-oriented summary."
     },
-    "facts": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "claim": {
-            "type": "string"
-          },
-          "evidence": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 12
-          }
-        },
-        "required": ["claim", "evidence"],
-        "additionalProperties": false
-      },
-      "maxItems": 20
-    },
-    "assumptions": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 20
-    },
-    "options": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "benefits": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 12
-          },
-          "drawbacks": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 12
-          },
-          "risks": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 12
-          }
-        },
-        "required": ["name", "benefits", "drawbacks", "risks"],
-        "additionalProperties": false
-      },
-      "maxItems": 8
+    "analysis": {
+      "type": "string",
+      "description": "Markdown analysis covering facts and evidence, inferences and assumptions, options and tradeoffs, minimum controls, operational failure modes, decision and estimate or ADR implications, and open questions where applicable."
     },
     "material_risks": {
       "type": "array",
+      "description": "Material risks that could change or invalidate the verdict.",
       "items": {
         "type": "string"
       },
       "maxItems": 20
     },
-    "recommendation": {
-      "type": "object",
-      "properties": {
-        "choice": {
-          "type": "string"
-        },
-        "rationale": {
-          "type": "string"
-        },
-        "confidence": {
-          "type": "string",
-          "enum": ["low", "medium", "high"]
-        },
-        "conditions_that_change_it": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 12
-        }
-      },
-      "required": ["choice", "rationale", "confidence", "conditions_that_change_it"],
-      "additionalProperties": false
-    },
-    "open_questions": {
+    "conditions_that_change_it": {
       "type": "array",
+      "description": "Specific evidence or conditions that would change the verdict.",
       "items": {
         "type": "string"
       },
@@ -111,6 +42,7 @@
     },
     "validation_steps": {
       "type": "array",
+      "description": "Concrete checks needed before acting on the verdict.",
       "items": {
         "type": "string"
       },
@@ -119,13 +51,12 @@
   },
   "required": [
     "status",
+    "verdict",
+    "confidence",
     "executive_summary",
-    "facts",
-    "assumptions",
-    "options",
+    "analysis",
     "material_risks",
-    "recommendation",
-    "open_questions",
+    "conditions_that_change_it",
     "validation_steps"
   ],
   "additionalProperties": false

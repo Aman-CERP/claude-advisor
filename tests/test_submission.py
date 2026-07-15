@@ -5,13 +5,43 @@ import unittest
 from pathlib import Path
 from urllib.parse import urlparse
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SUBMISSION = ROOT / "submission"
 PLUGIN = ROOT / "plugins" / "amanerp-second-opinion"
 
 
 class SubmissionPacketTests(unittest.TestCase):
+    def test_advisory_contract_is_shallow_and_skill_owns_format_boundary(self) -> None:
+        schema = json.loads(
+            (PLUGIN / "references" / "advisory-schema.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("description", schema)
+        self.assertEqual(
+            set(schema["required"]),
+            {
+                "status",
+                "verdict",
+                "confidence",
+                "executive_summary",
+                "analysis",
+                "material_risks",
+                "conditions_that_change_it",
+                "validation_steps",
+            },
+        )
+        self.assertFalse(
+            any(
+                property_schema.get("type") == "object"
+                for property_schema in schema["properties"].values()
+            )
+        )
+        skill = (PLUGIN / "skills" / "independent-advisory" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("sole machine-output contract", skill)
+        self.assertIn("--structured-output-attempts 2", skill)
+        self.assertIn("--acknowledge-retry-cost", skill)
+
     def test_listing_uses_verified_amanerp_surfaces(self) -> None:
         listing = json.loads((SUBMISSION / "listing.json").read_text(encoding="utf-8"))
 
