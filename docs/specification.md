@@ -125,7 +125,7 @@ Proceed with V1 as a local-only, non-mutating, explicit plugin. Defer remote MCP
 
 ## 7. Grounded platform baseline
 
-Research was refreshed on 2026-07-14 against official documentation and live local probes.
+Research was refreshed on 2026-07-15 against official documentation and live local probes.
 
 - OpenAI documents plugins as the stable packaging mechanism for sharing skills across teams; a plugin requires `.codex-plugin/plugin.json` and can be distributed through a marketplace repository.
 - OpenAI's submission portal explicitly accepts skills-only plugins. Its current checklist requires a verified developer or business identity, public website/support/privacy/terms URLs, final skill files, starter prompts, exactly five positive and three negative test cases, availability, release notes, and policy attestations.
@@ -133,7 +133,7 @@ Research was refreshed on 2026-07-14 against official documentation and live loc
 - OpenAI documents that supported surface and capability availability can vary; this release therefore advertises local Codex use only and fails clearly when its local executable prerequisites are unavailable.
 - Anthropic documents `claude -p` for non-interactive execution, `--output-format stream-json`, `--verbose`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
 - Claude Code uses Opus for complex reasoning, Sonnet for routine coding, and Haiku for simple low-latency work. Second Opinion therefore uses Opus for its default deep and critical reasoning profiles and permits Sonnet only through a separately acknowledged standard profile.
-- The locally tested Claude CLI is `2.1.210`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--name`, `--output-format`, `--verbose`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
+- The locally tested Claude CLI is `2.1.210`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--name`, `--output-format`, `--verbose`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. A retained local `2.1.209` binary was probed separately and also advertises `--name` and `--verbose`, confirming the declared minimum remains compatible with those controls. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
 - A live 2.1.210 synthetic probe confirmed that verbose stream JSON identifies the initialized and answering model as `claude-opus-4-8`. Supplying the deterministic, non-sensitive session name `amanerp-second-opinion-<kind>` prevents Claude Code's otherwise automatic Haiku session-title generation. The runner records and verifies the answering model from the stream rather than treating every `modelUsage` entry as a resolved reviewer.
 - Claude 2.1.209 and 2.1.210 accept `--max-turns` but do not advertise it in local `--help`. A live isolated analysis probe with `--max-turns 1` exited successfully and returned bounded turn usage. Doctor verifies parser recognition without an inference call by running `claude --max-turns 1 --version` with empty stdin and the same named 20-second timeout as other dependency probes, requiring exit zero and the same parsed version as the primary version probe. This avoids depending on undocumented error wording or a deliberately invalid budget.
 - The exact authentication probe `claude auth status --json` was live-verified through 2.1.210. Exit 0 plus JSON boolean `loggedIn: true` is success. The command also returns identity and organization fields; the plugin must neither print nor persist those fields.
@@ -358,7 +358,7 @@ Defaults:
 - PR review critical: `opus`, xhigh effort, 10 turns, USD 10.00, 1,500 seconds;
 - advisory or PR review standard: `sonnet`, high effort, the corresponding deep turn/timeout ceiling, and a USD 5.00 requested ceiling.
 
-The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one answering model, agreement between the initialized model and every assistant event, presence of that model in `modelUsage`, and a model family matching the selected profile. Any different answering model or auxiliary model usage is a `model_policy_violation`; no structured result is published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 2 receipts add `quality_profile`, `model_requested`, `primary_model_observed`, `auxiliary_models_observed`, `models_observed`, and normalized per-model token/cost/role records.
+The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one initialized identifier, exactly one answering identifier, a selected-profile family for both, and at least one `modelUsage` entry in that family. Fully resolved, moving-alias, or dated identifiers within the requested family are classified as primary; any Haiku/Sonnet/other-family use inside an Opus run (or other profile-family mismatch) is auxiliary and produces `model_policy_violation`, with no structured result published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 2 receipts add `quality_profile`, `model_requested`, `primary_model_observed`, `primary_family_models_observed`, `auxiliary_models_observed`, `models_observed`, and normalized per-model token/cost/role records.
 
 The runner never retries or falls back to a different model. An Opus failure remains a failed run. A new Sonnet standard run requires a distinct command with explicit acknowledgment and, when invoked through a skill, fresh user authorization.
 
@@ -455,7 +455,7 @@ Receipts include:
 - runner command and outcome classification without question/context content;
 - executable paths and versions;
 - selected quality profile, requested model family, effort, turns, budget, and timeout;
-- initialized and answering model identity, any auxiliary models, and normalized per-model role/token/cost usage;
+- initialized and answering model identity, all observed identifiers in the requested primary family, any auxiliary-family models, and normalized per-model role/token/cost usage;
 - security-control booleans;
 - input, diff, and result SHA-256 hashes;
 - GitHub immutable revision metadata when applicable;

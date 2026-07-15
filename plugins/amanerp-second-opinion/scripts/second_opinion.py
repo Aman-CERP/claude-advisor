@@ -1083,7 +1083,9 @@ def parse_claude_stream(raw: bytes) -> tuple[list[dict[str, Any]], dict[str, Any
 
 
 def safe_model_id(value: Any) -> str | None:
-    return value if isinstance(value, str) and MODEL_ID_PATTERN.fullmatch(value) else None
+    return (
+        value if isinstance(value, str) and MODEL_ID_PATTERN.fullmatch(value) else None
+    )
 
 
 def valid_nonnegative_number(value: Any) -> bool:
@@ -1122,7 +1124,9 @@ def collect_model_telemetry(
                 initialized_models.add(model)
         if event.get("type") == "assistant":
             message = event.get("message")
-            model = safe_model_id(message.get("model") if isinstance(message, dict) else None)
+            model = safe_model_id(
+                message.get("model") if isinstance(message, dict) else None
+            )
             if model is None:
                 issues.append("assistant model is missing or invalid")
             else:
@@ -1137,8 +1141,12 @@ def collect_model_telemetry(
         next(iter(initialized_models)) if len(initialized_models) == 1 else None
     )
     primary_model = next(iter(assistant_models)) if len(assistant_models) == 1 else None
-    if initialized_model and primary_model and initialized_model != primary_model:
-        issues.append("initialization and answering models differ")
+    if initialized_model and not model_matches_family(
+        initialized_model, requested_family
+    ):
+        issues.append(
+            "initialization model does not match the requested quality profile"
+        )
     if primary_model and not model_matches_family(primary_model, requested_family):
         issues.append("answering model does not match the requested quality profile")
 
@@ -1155,11 +1163,20 @@ def collect_model_telemetry(
             usage_by_model[model] = usage
 
     observed_models = initialized_models | assistant_models | set(usage_by_model)
-    auxiliary_models = sorted(
-        model for model in observed_models if model != primary_model
+    primary_family_models = sorted(
+        model
+        for model in observed_models
+        if model_matches_family(model, requested_family)
     )
-    if primary_model and primary_model not in usage_by_model:
-        issues.append("answering model is absent from model usage")
+    auxiliary_models = sorted(
+        model
+        for model in observed_models
+        if not model_matches_family(model, requested_family)
+    )
+    if primary_model and not any(
+        model_matches_family(model, requested_family) for model in usage_by_model
+    ):
+        issues.append("requested model family is absent from model usage")
     if auxiliary_models:
         issues.append("auxiliary model usage is not permitted")
 
@@ -1181,7 +1198,9 @@ def collect_model_telemetry(
         normalized_usage.append(
             {
                 "model": model,
-                "role": "primary" if model == primary_model else "auxiliary",
+                "role": "primary"
+                if model_matches_family(model, requested_family)
+                else "auxiliary",
                 "input_tokens": input_tokens
                 if valid_nonnegative_integer(input_tokens)
                 else None,
@@ -1202,6 +1221,7 @@ def collect_model_telemetry(
         "initialized_model_observed": initialized_model,
         "assistant_models_observed": sorted(assistant_models),
         "primary_model_observed": primary_model,
+        "primary_family_models_observed": primary_family_models,
         "auxiliary_models_observed": auxiliary_models,
         "models_observed": sorted(observed_models),
         "resolved_models": sorted(observed_models),
@@ -1265,13 +1285,9 @@ def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
         candidates: list[Any] = []
         if event.get("type") == "system":
             candidates.append(event.get("model"))
-        if event.get("type") == "assistant" and isinstance(
-            event.get("message"), dict
-        ):
+        if event.get("type") == "assistant" and isinstance(event.get("message"), dict):
             candidates.append(event["message"].get("model"))
-        if event.get("type") == "result" and isinstance(
-            event.get("modelUsage"), dict
-        ):
+        if event.get("type") == "result" and isinstance(event.get("modelUsage"), dict):
             candidates.extend(event["modelUsage"].keys())
         observed_models.update(
             model for candidate in candidates if (model := safe_model_id(candidate))
@@ -1463,9 +1479,7 @@ def execute_claude(
             "quality_profile": limits["quality_profile"],
             "model_requested": limits["model"],
             "effort": limits["effort"],
-            "standard_quality_acknowledged": limits[
-                "standard_quality_acknowledged"
-            ],
+            "standard_quality_acknowledged": limits["standard_quality_acknowledged"],
         },
         "resource_limits": {
             "timeout_seconds": limits["timeout"],
@@ -1588,9 +1602,7 @@ def execute_claude(
             )
             atomic_write_json(failure_path, failure_summary)
             receipt["artifacts"]["claude_failure"] = str(failure_path)
-            receipt["claude"]["models_observed"] = failure_summary[
-                "models_observed"
-            ]
+            receipt["claude"]["models_observed"] = failure_summary["models_observed"]
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude analysis failed",

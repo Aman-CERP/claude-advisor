@@ -175,13 +175,16 @@ primary_model = control.get(
     "FAKE_CLAUDE_PRIMARY_MODEL",
     "claude-opus-4-8" if requested_model == "opus" else "claude-sonnet-4-6",
 )
+initialized_model = control.get("FAKE_CLAUDE_INIT_MODEL", primary_model)
+assistant_model = control.get("FAKE_CLAUDE_ASSISTANT_MODEL", primary_model)
+usage_model = control.get("FAKE_CLAUDE_USAGE_MODEL", primary_model)
 session_id = "00000000-0000-4000-8000-000000000001"
 if mode != "missing-init":
     print(json.dumps({
         "type": "system",
         "subtype": "init",
         "session_id": session_id,
-        "model": primary_model,
+        "model": initialized_model,
         "claude_code_version": control.get(
             "FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"
         ).split()[0],
@@ -191,7 +194,7 @@ if mode != "missing-assistant":
         "type": "assistant",
         "session_id": session_id,
         "message": {
-            "model": primary_model,
+            "model": assistant_model,
             "type": "message",
             "role": "assistant",
             "content": [],
@@ -204,12 +207,12 @@ if mode == "error":
         "is_error": True,
         "session_id": session_id,
         "result": "provider token=very-secret-value failed",
-        "modelUsage": {primary_model: {"inputTokens": 4, "outputTokens": 1}},
+        "modelUsage": {usage_model: {"inputTokens": 4, "outputTokens": 1}},
     }))
     print("token=very-secret-value", file=sys.stderr)
     raise SystemExit(23)
 model_usage = {
-    primary_model: {
+    usage_model: {
         "inputTokens": 10,
         "outputTokens": 20,
         "cacheReadInputTokens": 5,
@@ -227,7 +230,7 @@ if auxiliary_model:
         "costUSD": 0.001,
     }
 if mode == "invalid-model-usage":
-    model_usage[primary_model]["costUSD"] = "0.01"
+    model_usage[usage_model]["costUSD"] = "0.01"
 envelope = {
     "type": "result",
     "subtype": "success",

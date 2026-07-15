@@ -160,12 +160,8 @@ class AdvisoryTests(unittest.TestCase):
                 receipt["claude"]["primary_model_observed"], "claude-opus-4-8"
             )
             self.assertEqual(receipt["claude"]["auxiliary_models_observed"], [])
-            self.assertEqual(
-                receipt["claude"]["models_observed"], ["claude-opus-4-8"]
-            )
-            self.assertEqual(
-                receipt["claude"]["resolved_models"], ["claude-opus-4-8"]
-            )
+            self.assertEqual(receipt["claude"]["models_observed"], ["claude-opus-4-8"])
+            self.assertEqual(receipt["claude"]["resolved_models"], ["claude-opus-4-8"])
             self.assertEqual(receipt["claude"]["model_usage"][0]["role"], "primary")
             self.assertEqual(receipt["claude"]["model_usage"][0]["cost_usd"], 0.01)
 
@@ -278,6 +274,42 @@ class AdvisoryTests(unittest.TestCase):
                 self.assertEqual(receipt["outcome"], "model_policy_violation")
                 self.assertFalse((run_dir / "result.json").exists())
 
+    def test_advisory_accepts_distinct_identifiers_within_requested_family(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_INIT_MODEL"] = "claude-opus-4-8"
+            env["FAKE_CLAUDE_ASSISTANT_MODEL"] = "claude-opus-4-8-latest"
+            env["FAKE_CLAUDE_USAGE_MODEL"] = "claude-opus-4-8-20260715"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertTrue(receipt["claude"]["model_policy_verified"])
+            self.assertEqual(receipt["claude"]["auxiliary_models_observed"], [])
+            self.assertEqual(
+                receipt["claude"]["primary_family_models_observed"],
+                [
+                    "claude-opus-4-8",
+                    "claude-opus-4-8-20260715",
+                    "claude-opus-4-8-latest",
+                ],
+            )
+            self.assertEqual(receipt["claude"]["model_usage"][0]["role"], "primary")
+
     def test_advisory_rejects_unverifiable_per_model_usage(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -350,7 +382,9 @@ class AdvisoryTests(unittest.TestCase):
                 )
                 self.assertEqual(receipt["outcome"], "invalid_result")
 
-    def test_advisory_requires_terminal_result_and_verifiable_model_events(self) -> None:
+    def test_advisory_requires_terminal_result_and_verifiable_model_events(
+        self,
+    ) -> None:
         for mode, code, outcome in (
             ("missing-result", 7, "invalid_result"),
             ("missing-init", 5, "model_policy_violation"),
@@ -463,9 +497,7 @@ class AdvisoryTests(unittest.TestCase):
             failure = json.loads(failure_path.read_text())
             self.assertEqual(failure["exit_code"], 23)
             self.assertNotIn("very-secret-value", json.dumps(failure))
-            self.assertEqual(
-                receipt["artifacts"]["claude_failure"], str(failure_path)
-            )
+            self.assertEqual(receipt["artifacts"]["claude_failure"], str(failure_path))
 
     def test_advisory_bounds_claude_stdout_before_json_parsing(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

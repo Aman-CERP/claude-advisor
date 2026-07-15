@@ -50,7 +50,7 @@ This release preserves the v0.1 runtime trust boundary while replacing the publi
 1. Replace caller-controlled model/effort values with `standard`, `deep`, and `critical` quality profiles. Default both skills to Opus/high `deep`; use Opus/xhigh for `critical`; require explicit acknowledgment and skill-level user authorization for Sonnet/high `standard`.
 2. Add failing tests for profile selection, arbitrary override rejection, deterministic session naming, verbose stream parsing, answering-model verification, auxiliary-model rejection, no fallback, and redacted non-zero-exit evidence.
 3. Pass a deterministic non-sensitive `--name`, request verbose `stream-json`, parse initialized and assistant model identities, and publish a result only when all observed inference usage matches the selected family.
-4. Bump the receipt schema, preserve `resolved_models` only as a deprecated compatibility alias, and add explicit requested/primary/auxiliary/observed model fields plus normalized role/token/cost usage.
+4. Bump the receipt schema, preserve `resolved_models` only as a deprecated compatibility alias, and add explicit requested/primary-family/auxiliary/observed model fields plus normalized role/token/cost usage. Treat identifier variants in the requested family as primary while rejecting every different-family auxiliary.
 5. Update both skills, direct-run documentation, submission materials, changelog, and validators to disclose the enforced profile policy and prohibit silent downgrade after failure.
 6. Re-run all local gates, package reproducibility, official validators, cache-safe local reinstall, a synthetic live smoke on the highest-tested Claude CLI, and an Opus critical dogfood review of the final PR diff.
 

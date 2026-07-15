@@ -16,6 +16,11 @@ VALIDATOR = ROOT / "scripts" / "validate_project.py"
 
 
 class PackagingTests(unittest.TestCase):
+    def test_gitignore_preserves_current_and_legacy_run_artifacts(self) -> None:
+        ignored_paths = set((ROOT / ".gitignore").read_text().splitlines())
+        self.assertIn(".codex/claude-advisor/", ignored_paths)
+        self.assertIn(".codex/amanerp-second-opinion/", ignored_paths)
+
     def test_package_is_deterministic_and_contains_only_plugin_files(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             output = Path(raw)
