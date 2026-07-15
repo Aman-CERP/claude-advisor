@@ -1,6 +1,6 @@
-# Second Opinion by AmanERP v0.2.0 — Product and Engineering Specification
+# Second Opinion by AmanERP v0.2.1 — Product and Engineering Specification
 
-Status: Implemented; release and directory publication gates remain
+Status: v0.2.1 release candidate; OpenAI directory publication remains gated
 Date: 2026-07-14  
 Last amended: 2026-07-15
 Owner: AmanERP maintainers
@@ -9,7 +9,7 @@ License: Apache-2.0
 
 ## 1. Executive summary
 
-Second Opinion by AmanERP is an open-source Codex plugin that lets an operator explicitly obtain an independent analysis through a separately installed and locally authenticated Claude Code CLI. Version 0.2.0 ships two skills:
+Second Opinion by AmanERP is an open-source Codex plugin that lets an operator explicitly obtain an independent analysis through a separately installed and locally authenticated Claude Code CLI. Version 0.2.1 ships two skills:
 
 - `independent-advisory`: structured analysis and recommendations for a bounded decision.
 - `independent-pr-review`: an independent, evidence-oriented review of a GitHub pull request or a supplied Git diff.
@@ -132,6 +132,8 @@ Research was refreshed on 2026-07-15 against official documentation and live loc
 - OpenAI documents skills as instruction bundles with `SKILL.md`; plugin-owned skills can opt out of implicit invocation.
 - OpenAI documents that supported surface and capability availability can vary; this release therefore advertises local Codex use only and fails clearly when its local executable prerequisites are unavailable.
 - Anthropic documents `claude -p` for non-interactive execution, `--output-format stream-json`, `--verbose`, structured output with `--json-schema`, and resource controls including `--max-turns` and `--max-budget-usd`.
+- Anthropic documents that Agent SDK structured outputs are locally validated and re-prompted on mismatch, may end as `error_max_structured_output_retries`, and should use focused schemas with optional fields where evidence may be absent. Its current result contract exposes an `errors` list for distinguishing validation failures from fallback retractions.
+- Anthropic's open Agent SDK issue #502 documents an intermittent provider-side wrapper defect (`output`, `response`, or `json`) that can invalidate an otherwise correct root payload; the issue remained open when rechecked on 2026-07-15.
 - Claude Code uses Opus for complex reasoning, Sonnet for routine coding, and Haiku for simple low-latency work. Second Opinion therefore uses Opus for its default deep and critical reasoning profiles and permits Sonnet only through a separately acknowledged standard profile.
 - The locally tested Claude CLI is `2.1.210`. Its help confirms these mandatory V1 flags: `--print`, `--safe-mode`, `--tools`, `--no-chrome`, `--no-session-persistence`, `--name`, `--output-format`, `--verbose`, `--json-schema`, `--max-budget-usd`, `--model`, and `--effort`. A retained local `2.1.209` binary was probed separately and also advertises `--name` and `--verbose`, but flag presence does not verify the newly mandatory verbose stream-model telemetry schema. The supported minimum is therefore `2.1.210`, the version behavior-tested end to end. Accepted effort values are `low`, `medium`, `high`, `xhigh`, and `max`. Help states that safe mode disables CLAUDE.md, skills, plugins, hooks, MCP servers, commands, agents, and other customizations while retaining authentication; `--tools ""` disables built-in tools; `--no-session-persistence` avoids saving resumable sessions.
 - A live 2.1.210 synthetic probe confirmed that verbose stream JSON identifies the initialized and answering model as `claude-opus-4-8`. Supplying the deterministic, non-sensitive session name `amanerp-second-opinion-<kind>` prevents Claude Code's otherwise automatic Haiku session-title generation. The runner records and verifies the answering model from the stream rather than treating every `modelUsage` entry as a resolved reviewer.
@@ -153,6 +155,8 @@ Primary sources:
 - [Anthropic: Set up Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started)
 - [Anthropic: Claude Code environment variables](https://code.claude.com/docs/en/env-vars)
 - [Anthropic: Claude Code authentication](https://code.claude.com/docs/en/iam)
+- [Anthropic: Agent SDK structured outputs](https://code.claude.com/docs/en/agent-sdk/structured-outputs)
+- [Anthropic: Agent SDK wrapper defect #502](https://github.com/anthropics/claude-agent-sdk-python/issues/502)
 - [Anthropic: Using Claude Code with Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
 - [Anthropic: Trademark guidelines](https://www.anthropic.com/legal/trademark-guidelines)
 
@@ -206,6 +210,26 @@ The runner provides `advisory` with:
 
 Both analysis commands default to the `deep` quality profile. `--critical` is an alias for `--quality critical`. `--quality standard` is accepted only together with `--acknowledge-standard-quality`; skill-driven use additionally requires explicit user authorization and disclosure that Sonnet will replace the default Opus reviewer. The public CLI does not accept arbitrary model or effort overrides.
 
+The question is the bounded decision Claude must answer, and context files are
+supporting evidence. They may request analysis topics or decision criteria, but
+they cannot replace the plugin's safety, model, tool, or output contracts. The
+bundled JSON Schema supplied through `--json-schema` is the sole machine-output
+contract. Skill-driven callers must remove or translate embedded JSON, field,
+schema, or response-format instructions before invoking the runner.
+
+Both analysis commands accept `--structured-output-attempts 1|2`, defaulting to
+one. Two attempts additionally require `--acknowledge-retry-cost`. A retry is
+permitted only after Claude terminates with its structured-output retry-exhausted
+classification. It repeats the identical input, prompt, schema, model, effort,
+isolation controls, and per-attempt turn ceiling; it never downgrades or falls
+back. Initialization, assistant, and usage telemetry from the failed attempt must
+also verify the selected model family with no auxiliary model before retry. The
+configured budget and timeout are aggregate run ceilings. For two attempts,
+attempt one receives the full aggregate budget ceiling. After an eligible
+failure with verified reported cost, attempt two receives only the unused
+balance rounded down to cents and is preempted when less than USD 0.10 or no
+aggregate time remains.
+
 ### FR-4: PR-review command
 
 The runner provides `pr-review` with exactly one review source:
@@ -224,17 +248,28 @@ V1 ceilings are 6 MiB for a PR diff or individual context file, 8 MiB aggregate 
 
 ### FR-5: Structured outcomes
 
-Claude's structured-output envelope remains untrusted. The runner validates the extracted result locally and fail-closed. Its validator implements every keyword used by the bundled schemas: `type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`. A bundled schema using any unsupported keyword is a build error.
+Claude's structured-output envelope remains untrusted. The runner validates the extracted result locally and fail-closed. Its validator implements every keyword used by the bundled schemas: `type`, `required`, `properties`, `additionalProperties`, `enum`, `items`, `minItems`, `maxItems`, `minimum`, and `maximum`; it also accepts the non-validating annotation keyword `description`. A bundled schema using any unsupported keyword is a build error.
 
 Advisory output includes:
 
-- executive summary;
-- facts and cited evidence references;
-- assumptions and uncertainties;
-- options with tradeoffs;
+- verdict, confidence, and executive summary;
+- one Markdown analysis field covering facts and evidence references,
+  assumptions and uncertainty, options and tradeoffs, minimum controls,
+  operational failure modes, decision/estimate/ADR implications, and open
+  questions as applicable;
 - material risks;
-- recommendation, confidence, and conditions that would change it;
+- conditions that would change the verdict;
 - validation steps.
+
+The provider-facing advisory schema uses a closed root with exactly one required
+`output` property. Its payload is intentionally shallow, with scalar fields and
+string arrays. Rich reasoning belongs in the Markdown analysis field, not in
+deeply nested option or recommendation objects. The PR schema uses the same
+single-property provider envelope. The runner validates the whole envelope
+locally and unwraps exactly one layer before writing the stable consumer payload
+to `result.json`; alternative, extra, or nested wrappers fail closed. This both
+reduces structured-output repair pressure and mitigates the current documented
+Agent SDK wrapper defect without weakening the analytical rubric.
 
 PR-review output includes:
 
@@ -256,7 +291,7 @@ Every attempted run creates a unique run directory containing:
 - `receipt.json`: timing, versions, controls, hashes, exit classification, and artifact paths;
 - `stderr.log`: redacted stderr, including for failed runs.
 
-When Claude exits non-zero after emitting bounded stream events, the run also contains `claude-failure.json`: a redacted diagnostic summary with the exit code, event counts, terminal status fields, observed model metadata, and a sanitized error message when available. The runner does not retain a raw failed stream because it may contain partial sensitive output.
+When Claude exits non-zero after emitting bounded stream events, the run also contains `claude-failure.json`: a redacted diagnostic summary with the exit code, event and safe subtype counts, structured-output tool-attempt count, candidate correction-event count (the next user event after a StructuredOutput assistant attempt, ignoring intervening non-participant events), content-free terminal error counts/categories, terminal status and usage fields, and observed model metadata. Terminal `result` prose and terminal validation-message text are omitted for every failure because either may contain sensitive business analysis. Multi-attempt runs additionally retain an attempt-numbered failure summary for each failed attempt. If aggregate timeout preempts an eligible retry before its process starts, the last attempt-numbered structured-output failure is also promoted to canonical `claude-failure.json`, while the top-level outcome remains `timeout` and `retry_preempted_reason` records `aggregate_timeout`. Every started attempt receives a content-free audit record, including process failures and exit-zero responses later rejected by stream parsing, model policy, usage, ceiling, structured-output extraction, or local schema validation. The outer internal-error boundary also fills or finalizes the current attempt record if unexpected runner bookkeeping or artifact I/O fails. The runner does not retain a raw failed stream or correction content because either may contain partial sensitive output.
 
 The receipt is always written once a run directory exists, including on timeout or child-process failure.
 
@@ -364,6 +399,9 @@ V1 bounds:
 - `standard` requires `--acknowledge-standard-quality` and uses Sonnet/high;
 - `deep` uses Opus/high;
 - `critical` uses Opus/xhigh.
+- structured-output attempts: one by default, or two only with explicit retry-cost acknowledgment;
+- timeout and budget are aggregate across attempts; turns remain a per-attempt ceiling;
+- retry eligibility is limited to Claude's structured-output retry-exhausted terminal classification.
 
 Defaults:
 
@@ -373,11 +411,29 @@ Defaults:
 - PR review critical: `opus`, xhigh effort, 10 turns, USD 10.00, 1,500 seconds;
 - advisory or PR review standard: `sonnet`, high effort, the corresponding deep turn/timeout ceiling, and a USD 5.00 requested ceiling.
 
-The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one initialized identifier, exactly one answering identifier, a selected-profile family for both, and at least one `modelUsage` entry in that family. Fully resolved, moving-alias, or dated identifiers within the requested family are classified as primary; any Haiku/Sonnet/other-family use inside an Opus run (or other profile-family mismatch) is auxiliary and produces `model_policy_violation`, with no structured result published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 2 receipts add `quality_profile`, `model_requested`, `primary_model_observed`, `primary_family_models_observed`, `auxiliary_models_observed`, `models_observed`, and normalized per-model token/cost/role records.
+The runner passes a deterministic session name and parses verbose stream JSON. Success requires exactly one initialized identifier, exactly one answering identifier, a selected-profile family for both, and at least one `modelUsage` entry in that family. Fully resolved, moving-alias, or dated identifiers within the requested family are classified as primary; any Haiku/Sonnet/other-family use inside an Opus run (or other profile-family mismatch) is auxiliary and produces `model_policy_violation`, with no structured result published. `resolved_models` remains as a deprecated compatibility alias, while schema-version 3 receipts record the requested/observed model fields, normalized per-model usage, authorized attempt count, attempts started, whether retry occurred, the aggregate budget strategy, and the exact ceiling passed to each started attempt.
 
-The runner never retries or falls back to a different model. An Opus failure remains a failed run. A new Sonnet standard run requires a distinct command with explicit acknowledgment and, when invoked through a skill, fresh user authorization.
+The runner never silently retries and never falls back to a different model. By
+default an Opus failure remains a failed run. A same-model retry requires two
+explicit CLI controls, is limited to Claude's structured-output retry-exhausted
+terminal outcome, and remains inside aggregate budget and timeout ceilings. A
+failed attempt with observed off-family use produces `model_policy_violation`;
+incomplete model telemetry blocks the retry as
+`retry_blocked_model_unverified` without falsely claiming a downgrade. A retry
+is marked triggered only after its process attempt actually starts; an aggregate
+deadline that expires first records `retry_preempted_reason` instead. A new
+Sonnet standard run requires a distinct command with explicit acknowledgment
+and, when invoked through a skill, fresh user authorization.
 
-A live 2.1.210 critical-profile smoke completed with Opus 4.8 as the sole initialized, answering, and billed model, no auxiliary model, four turns, and schema-valid output. A deliberately under-provisioned four-turn run first exhausted structured-output retries and produced only the redacted failure summary; rerunning the same Opus/xhigh profile with its specified ten-turn ceiling succeeded. A separate `--tools ""` probe elicited attempted Bash-call prose but created no marker file, confirming that model narration is not execution evidence and that the no-tools boundary still holds on the highest-tested release.
+Two-attempt authorization uses a remaining-reported-aggregate ledger rather than
+fixed slices. Attempt one receives the full aggregate requested ceiling. After an
+eligible failure with verified cost, the runner subtracts that cost, rounds the
+balance down to cents, and passes only that balance to attempt two. A balance
+below USD 0.10 preempts retry. Receipts record the strategy and exact ceiling
+passed to every started attempt. This prevents the recovery option from starving
+an otherwise-successful first analysis while preserving the aggregate gate.
+
+A live 2.1.210 critical-profile smoke completed with Opus 4.8 as the sole initialized, answering, and billed model, no auxiliary model, four turns, and schema-valid output. A later real advisory reached Claude's internal structured-output retry ceiling after six assistant responses and five correction events despite the plugin's ten-turn ceiling; the plugin correctly failed closed. A subsequent full-PR dogfood run on head `347a460` repeated the terminal after five StructuredOutput calls, five corrections, six turns, and Opus-only usage. This proves that `--max-turns` is an outer per-attempt ceiling, not a guarantee that Claude's internal schema-repair loop will succeed, and that payload flattening alone does not mitigate the current provider wrapper defect. Version 0.2.1 therefore flattens the advisory payload, places both payloads in one required `output` compatibility envelope, makes the output-contract boundary explicit, classifies this terminal outcome precisely, and offers only an explicitly authorized same-model retry. A separate `--tools ""` probe elicited attempted Bash-call prose but created no marker file, confirming that model narration is not execution evidence and that the no-tools boundary still holds on the highest-tested release.
 
 A turn or budget flag is a Claude-side requested ceiling, not a promise of availability, exact subscription charge, or perfect pre-spend enforcement. A live 2.1.209 structured-output run reported three turns after `--max-turns 2`; the plugin therefore checks reported turns/cost and rejects a breached run instead of publishing its result as success. A successful run also requires non-negative, correctly typed `num_turns` and `total_cost_usd` fields from the behavior-tested envelope. Missing, mistyped, non-finite, or negative usage is recorded as unverified and rejected before result publication.
 
@@ -388,6 +444,8 @@ The `--max-budget-usd` flag is a required compatibility feature in V1 and is alw
 Both prompts must:
 
 - state the role and bounded task;
+- distinguish the bounded decision question from supporting evidence while making
+  the bundled JSON Schema the sole output-format contract;
 - prioritize correctness, security, data integrity, compatibility, and evidence;
 - distinguish observed facts from inference;
 - require an `unable_to_review` outcome when evidence is insufficient;
@@ -455,7 +513,7 @@ Supported V1 environment:
 - macOS or Linux;
 - Python 3.11+;
 - Codex release supporting plugin marketplaces and plugin skills;
-- Claude Code 2.1.210+ for the exact tested isolation flags and mandatory verbose stream-model telemetry; 2.1.210 is the highest behavior-tested release for v0.2.0, and newer releases produce a compatibility warning;
+- Claude Code 2.1.210+ for the exact tested isolation flags and mandatory verbose stream-model telemetry; 2.1.210 is the highest behavior-tested release for v0.2.1, and newer releases produce a compatibility warning;
 - GitHub CLI 2.x only for `--pr` mode or explicit `doctor --check-update`;
 - Git for local source metadata and packaging workflows.
 
@@ -470,6 +528,8 @@ Receipts include:
 - runner command and outcome classification without question/context content;
 - executable paths and versions;
 - selected quality profile, requested model family, effort, turns, budget, and timeout;
+- authorized structured-output attempts, attempts started, retry status, aggregate
+  budget, and requested budget per attempt;
 - initialized and answering model identity, all observed identifiers in the requested primary family, any auxiliary-family models, and normalized per-model role/token/cost usage;
 - security-control booleans;
 - input, diff, and result SHA-256 hashes;
@@ -505,7 +565,7 @@ Tests cover success, missing Claude, incompatible Claude, each advertised mandat
 
 ### AC-6: Advisory outcomes
 
-Tests cover valid structured output, non-zero Claude exit with a redacted failure summary, timeout, malformed stream events, missing structured output, answering-model mismatch, auxiliary-model use, and schema-invalid result.
+Tests cover valid structured output through the required compatibility envelope, exact one-layer unwrapping, non-zero Claude exit with a redacted failure summary, timeout, malformed stream events, missing structured output, answering-model mismatch, auxiliary-model use, schema-invalid result, precise structured-output retry-exhausted classification, content-free terminal error categorization, safe failed-stream diagnostics, rejection of unacknowledged retries, one authorized same-model retry, rejection of a failed-attempt model downgrade, and no retry for unrelated failures.
 
 ### AC-7: PR snapshot integrity
 
@@ -521,7 +581,7 @@ Tests prove success and failure receipts are written atomically, output files ha
 
 ### AC-10: Bounded inputs
 
-Tests cover file count, single-file size, total input size, timeout, turns, budget, quality-profile and standard-profile acknowledgment validation, rejection of arbitrary model/effort overrides, answering-model enforcement, and reported turn/cost ceiling breaches.
+Tests cover file count, single-file size, total input size, timeout, turns, budget, quality-profile and standard-profile acknowledgment validation, structured-output attempt and retry-cost acknowledgment validation, the remaining-aggregate budget ledger, no first-attempt starvation, insufficient-balance retry preemption, rejection of arbitrary model/effort overrides, answering-model enforcement, and reported turn/cost ceiling breaches.
 
 ### AC-11: Deterministic package
 
@@ -529,7 +589,7 @@ Two clean packaging runs from the same source revision produce byte-identical ar
 
 ### AC-12: Live smoke
 
-On the maintainer workstation, `doctor`, one advisory, one supplied-diff or public-PR review, and one no-tools behavioral probe complete successfully against the authenticated, highest-tested Claude CLI, with receipts inspected for isolation controls.
+On the maintainer workstation, `doctor`, one advisory using the flattened schema, one supplied-diff or public-PR review, and one no-tools behavioral probe complete successfully against the authenticated, highest-tested Claude CLI, with receipts inspected for isolation controls. A representative question that asks for decision, estimate, and ADR guidance must complete without embedding a competing machine-output contract.
 
 ### AC-13: Team-wide local availability
 

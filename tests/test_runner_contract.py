@@ -67,7 +67,7 @@ class DoctorTests(unittest.TestCase):
                     "checked": True,
                     "channel": "github_releases",
                     "repository": "Aman-CERP/amanerp-second-opinion",
-                    "installed_version": "0.2.0",
+                    "installed_version": "0.2.1",
                     "latest_version": "0.3.0",
                     "update_available": True,
                     "ahead_of_latest": False,
@@ -97,8 +97,8 @@ class DoctorTests(unittest.TestCase):
 
     def test_doctor_reports_current_and_locally_ahead_versions(self) -> None:
         cases = (
-            ("v0.2.0", False, False),
-            ("v0.1.0", False, True),
+            ("v0.2.1", False, False),
+            ("v0.2.0", False, True),
         )
         for tag, update_available, ahead_of_latest in cases:
             with self.subTest(tag=tag), tempfile.TemporaryDirectory() as raw:
@@ -201,7 +201,28 @@ class DoctorTests(unittest.TestCase):
 
 
 class AdvisoryTests(unittest.TestCase):
-    def test_failed_stream_redacts_before_bounding_provider_error(self) -> None:
+    def test_provider_compatibility_envelope_unwraps_exactly_once(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        schema = runner.load_schema("advisory-schema.json")
+        valid = {"output": ADVISORY_RESULT}
+
+        runner.validate_result(valid, schema)
+        self.assertEqual(runner.unwrap_result_payload(valid), ADVISORY_RESULT)
+
+        for invalid in (
+            {"response": ADVISORY_RESULT},
+            {"output": {"output": ADVISORY_RESULT}},
+            {"output": ADVISORY_RESULT, "result": ADVISORY_RESULT},
+        ):
+            with self.subTest(keys=sorted(invalid)):
+                with self.assertRaises(runner.AdvisorError):
+                    runner.validate_result(invalid, schema)
+
+    def test_failed_stream_omits_provider_result_content(self) -> None:
         spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
         self.assertIsNotNone(spec)
         self.assertIsNotNone(spec.loader)
@@ -212,9 +233,79 @@ class AdvisoryTests(unittest.TestCase):
 
         summary = runner.summarize_failed_stream(raw, exit_code=1)
 
-        self.assertEqual(summary["error_redactions"], 1)
-        self.assertNotIn("sk-ant-", summary["error"])
-        self.assertLessEqual(len(summary["error"]), 4096)
+        self.assertTrue(summary["terminal_result_omitted"])
+        self.assertNotIn("error", summary)
+        self.assertNotIn("sk-ant-", json.dumps(summary))
+
+    def test_failed_stream_counts_only_user_events_after_structured_output(
+        self,
+    ) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        raw = "\n".join(
+            json.dumps(event)
+            for event in (
+                {"type": "user", "message": {"content": "initial request"}},
+                {
+                    "type": "assistant",
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "stop_reason": "tool_use",
+                        "content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                    },
+                },
+                {"type": "system", "subtype": "structured_output_retry"},
+                {"type": "user", "message": {"content": "schema correction"}},
+                {"type": "user", "message": {"content": "unrelated user event"}},
+                {"type": "result", "subtype": "error_during_execution"},
+            )
+        ).encode()
+
+        summary = runner.summarize_failed_stream(raw, exit_code=1)
+
+        self.assertEqual(summary["structured_output_tool_attempts"], 1)
+        self.assertEqual(summary["correction_events"], 1)
+
+    def test_failed_stream_classifies_terminal_errors_without_retaining_text(
+        self,
+    ) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        raw = (
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "error_max_structured_output_retries",
+                    "errors": [
+                        "root: must have required property 'output'",
+                        "root: must NOT have additional properties",
+                        "private customer analysis must not be retained",
+                    ],
+                }
+            )
+            + "\n"
+        ).encode()
+
+        summary = runner.summarize_failed_stream(raw, exit_code=1)
+
+        self.assertEqual(summary["terminal_error_count"], 3)
+        self.assertEqual(
+            summary["terminal_error_categories"],
+            {
+                "additional_property": 1,
+                "missing_required_property": 1,
+                "unclassified": 1,
+            },
+        )
+        serialized = json.dumps(summary)
+        self.assertNotIn("private customer analysis", serialized)
+        self.assertNotIn("property 'output'", serialized)
 
     def test_advisory_is_isolated_and_writes_owner_only_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -287,7 +378,13 @@ class AdvisoryTests(unittest.TestCase):
             self.assertTrue(receipt["controls"]["safe_mode"])
             self.assertTrue(receipt["controls"]["tools_disabled"])
             self.assertEqual(receipt["outcome"], "success")
-            self.assertEqual(receipt["schema_version"], "2")
+            self.assertEqual(receipt["schema_version"], "3")
+            self.assertEqual(
+                receipt["resource_limits"]["structured_output_attempts_authorized"],
+                1,
+            )
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
             self.assertEqual(receipt["claude"]["quality_profile"], "deep")
             self.assertEqual(receipt["claude"]["model_requested"], "opus")
             self.assertEqual(
@@ -298,6 +395,10 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(receipt["claude"]["resolved_models"], ["claude-opus-4-8"])
             self.assertEqual(receipt["claude"]["model_usage"][0]["role"], "primary")
             self.assertEqual(receipt["claude"]["model_usage"][0]["cost_usd"], 0.01)
+            self.assertEqual(
+                len(receipt["claude"]["attempts"]),
+                receipt["resource_limits"]["attempts_started"],
+            )
 
     def test_standard_quality_requires_acknowledgment_and_uses_sonnet(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -490,6 +591,9 @@ class AdvisoryTests(unittest.TestCase):
                     (Path(summary["run_dir"]) / "receipt.json").read_text()
                 )
                 self.assertEqual(receipt["outcome"], "invalid_result")
+                self.assertEqual(
+                    receipt["claude"]["attempts"][0]["outcome"], "invalid_result"
+                )
 
     def test_advisory_rejects_malformed_or_missing_structured_output(self) -> None:
         for mode in ("malformed", "no-structured-output"):
@@ -568,6 +672,9 @@ class AdvisoryTests(unittest.TestCase):
                 run_dir = Path(stdout_json(completed)["run_dir"])
                 receipt = json.loads((run_dir / "receipt.json").read_text())
                 self.assertEqual(receipt["outcome"], "ceiling_breach")
+                self.assertEqual(
+                    receipt["claude"]["attempts"][0]["outcome"], "ceiling_breach"
+                )
                 self.assertFalse((run_dir / "result.json").exists())
 
     def test_advisory_rejects_missing_or_mistyped_usage_evidence(self) -> None:
@@ -633,6 +740,429 @@ class AdvisoryTests(unittest.TestCase):
             self.assertNotIn("very-secret-value", json.dumps(failure))
             self.assertEqual(receipt["artifacts"]["claude_failure"], str(failure_path))
 
+    def test_structured_output_retry_exhaustion_is_precise_and_content_free(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-exhausted"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question-file",
+                    str(
+                        Path(__file__).parent
+                        / "fixtures"
+                        / "advisory-decision-with-output-request.md"
+                    ),
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            self.assertIn("structured output", completed.stderr.lower())
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            failure = json.loads((run_dir / "claude-failure.json").read_text())
+            self.assertEqual(receipt["outcome"], "structured_output_retry_exhausted")
+            self.assertEqual(failure["structured_output_tool_attempts"], 6)
+            self.assertEqual(failure["correction_events"], 5)
+            self.assertEqual(failure["system_subtypes"]["structured_output_retry"], 1)
+            self.assertEqual(failure["assistant_stop_reasons"]["tool_use"], 6)
+            self.assertEqual(failure["terminal"]["num_turns"], 6)
+            self.assertEqual(failure["terminal"]["total_cost_usd"], 0.42)
+            self.assertNotIn("private", json.dumps(failure))
+            self.assertFalse((run_dir / "result.json").exists())
+            self.assertFalse((run_dir / "report.md").exists())
+            analysis_calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(analysis_calls), 1)
+
+    def test_two_attempts_require_cost_acknowledgment(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--structured-output-attempts",
+                    "2",
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 2, completed.stderr)
+            self.assertIn("--acknowledge-retry-cost", completed.stderr)
+            if claude_log.exists():
+                self.assertFalse(
+                    any("--print" in call["args"] for call in read_jsonl(claude_log))
+                )
+
+    def test_authorized_retry_uses_same_model_and_remaining_aggregate_budget(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-once"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertTrue(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                receipt["resource_limits"]["attempt_budgets_requested_usd"],
+                [10.0, 9.58],
+            )
+            self.assertEqual(len(receipt["claude"]["attempts"]), 2)
+            self.assertEqual(
+                receipt["claude"]["attempts"][0]["outcome"],
+                "structured_output_retry_exhausted",
+            )
+            self.assertEqual(receipt["claude"]["attempts"][1]["outcome"], "success")
+            self.assertEqual(
+                len(receipt["claude"]["attempts"]),
+                receipt["resource_limits"]["attempts_started"],
+            )
+            self.assertTrue((run_dir / "claude-failure-attempt-1.json").exists())
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 2)
+            for call in calls:
+                args = call["args"]
+                self.assertEqual(args[args.index("--model") + 1], "opus")
+                self.assertEqual(args[args.index("--effort") + 1], "xhigh")
+                self.assertEqual(args[args.index("--max-turns") + 1], "10")
+                self.assertEqual(
+                    args[args.index("--json-schema") + 1],
+                    calls[0]["args"][calls[0]["args"].index("--json-schema") + 1],
+                )
+            self.assertEqual(
+                [
+                    call["args"][call["args"].index("--max-budget-usd") + 1]
+                    for call in calls
+                ],
+                ["10.00", "9.58"],
+            )
+
+    def test_two_attempt_authorization_does_not_starve_successful_first_attempt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_TOTAL_COST_USD"] = "6.0"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["claude"]["reported_cost_usd"], 6.0)
+            self.assertEqual(
+                receipt["resource_limits"]["attempt_budgets_requested_usd"],
+                [10.0],
+            )
+            analysis_call = next(
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            )
+            self.assertEqual(
+                analysis_call["args"][
+                    analysis_call["args"].index("--max-budget-usd") + 1
+                ],
+                "10.00",
+            )
+
+    def test_retry_is_preempted_when_reported_cost_leaves_no_usable_budget(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-once"
+            env["FAKE_CLAUDE_FAILURE_COST_USD"] = "0.45"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--max-budget-usd",
+                    "0.50",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                receipt["resource_limits"]["retry_preempted_reason"],
+                "insufficient_remaining_budget",
+            )
+            self.assertEqual(
+                receipt["resource_limits"]["attempt_budgets_requested_usd"],
+                [0.5],
+            )
+            self.assertEqual(
+                len(
+                    [
+                        call
+                        for call in read_jsonl(claude_log)
+                        if "--print" in call["args"]
+                    ]
+                ),
+                1,
+            )
+
+    def test_two_structured_output_failures_are_both_audited(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-exhausted"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "structured_output_retry_exhausted")
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertTrue(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
+                [
+                    "structured_output_retry_exhausted",
+                    "structured_output_retry_exhausted",
+                ],
+            )
+            self.assertTrue((run_dir / "claude-failure-attempt-1.json").exists())
+            self.assertTrue((run_dir / "claude-failure-attempt-2.json").exists())
+            self.assertTrue((run_dir / "claude-failure.json").exists())
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 2)
+
+    def test_authorized_retry_does_not_retry_other_claude_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "error"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["outcome"], "claude_failed")
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 1)
+
+    def test_incomplete_failure_telemetry_is_not_a_model_policy_violation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, _, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "error"
+            env["FAKE_CLAUDE_ASSISTANT_MODEL"] = ""
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            receipt = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
+            )
+            self.assertEqual(receipt["outcome"], "claude_failed")
+
+    def test_retry_is_distinctly_blocked_when_failure_model_is_unverified(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-once"
+            env["FAKE_CLAUDE_USAGE_MODEL"] = ""
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "retry_blocked_model_unverified")
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 1)
+
+    def test_authorized_retry_rejects_failed_attempt_model_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-once"
+            env["FAKE_CLAUDE_ASSISTANT_MODEL"] = "claude-haiku-4-5"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "model_policy_violation")
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 1)
+
+    def test_recovered_attempt_rejects_auxiliary_answering_model(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            env, claude_log, _ = fake_environment(root)
+            env["FAKE_CLAUDE_MODE"] = "structured-retry-then-auxiliary"
+            completed = run_cli(
+                [
+                    "advisory",
+                    "--question",
+                    "Choose A or B",
+                    "--critical",
+                    "--structured-output-attempts",
+                    "2",
+                    "--acknowledge-retry-cost",
+                    "--output-dir",
+                    str(root / "runs"),
+                ],
+                cwd=root,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 5, completed.stderr)
+            run_dir = Path(stdout_json(completed)["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "model_policy_violation")
+            self.assertTrue(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertEqual(
+                [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
+                ["structured_output_retry_exhausted", "model_policy_violation"],
+            )
+            self.assertFalse((run_dir / "result.json").exists())
+            calls = [
+                call for call in read_jsonl(claude_log) if "--print" in call["args"]
+            ]
+            self.assertEqual(len(calls), 2)
+
     def test_advisory_bounds_claude_stdout_before_json_parsing(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -697,6 +1227,8 @@ class AdvisoryTests(unittest.TestCase):
                             "effort": "low",
                             "quality_profile": "standard",
                             "standard_quality_acknowledged": True,
+                            "structured_output_attempts": 1,
+                            "retry_cost_acknowledged": False,
                         },
                         output_dir=str(root / "runs"),
                         sensitive_override=False,
@@ -707,7 +1239,302 @@ class AdvisoryTests(unittest.TestCase):
             run_dir = Path(captured.exception.payload["run_dir"])
             receipt = json.loads((run_dir / "receipt.json").read_text())
             self.assertEqual(receipt["outcome"], "timeout")
+            self.assertEqual(receipt["claude"]["attempts"][0]["outcome"], "timeout")
             self.assertNotIn("very-secret-value", (run_dir / "stderr.log").read_text())
+
+    def test_second_attempt_timeout_is_present_in_retry_audit_trail(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        session_id = "00000000-0000-4000-8000-000000000001"
+        first_failure = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": session_id,
+                    "model": "claude-opus-4-8",
+                },
+                {
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                    },
+                },
+                {
+                    "type": "result",
+                    "subtype": "error_max_structured_output_retries",
+                    "terminal_reason": "structured_output_retry_exhausted",
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "modelUsage": {
+                        "claude-opus-4-8": {
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                            "costUSD": 0.01,
+                        }
+                    },
+                },
+            )
+        ).encode()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            doctor_result = {
+                "claude": {
+                    "path": "/fake/claude",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
+                },
+                "warnings": [],
+            }
+            with mock.patch.object(
+                runner,
+                "run_bounded_process",
+                side_effect=(
+                    (1, first_failure, b""),
+                    runner.BoundedProcessError("timeout", stderr=b"retry timed out"),
+                ),
+            ):
+                with self.assertRaises(runner.AdvisorError) as captured:
+                    runner.execute_claude(
+                        kind="advisory",
+                        prompt_name="advisory-prompt.md",
+                        schema_name="advisory-schema.json",
+                        payload={"question": "Choose A or B", "context": []},
+                        request={"kind": "advisory"},
+                        source={"type": "advisory"},
+                        limits={
+                            "timeout": 60,
+                            "max_turns": 10,
+                            "max_budget_usd": 10.0,
+                            "model": "opus",
+                            "effort": "xhigh",
+                            "quality_profile": "critical",
+                            "standard_quality_acknowledged": False,
+                            "structured_output_attempts": 2,
+                            "retry_cost_acknowledged": True,
+                        },
+                        output_dir=str(root / "runs"),
+                        sensitive_override=False,
+                        sensitive_findings=[],
+                        doctor_result=doctor_result,
+                    )
+            self.assertEqual(captured.exception.code, 6)
+            run_dir = Path(captured.exception.payload["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertEqual(
+                [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
+                ["structured_output_retry_exhausted", "timeout"],
+            )
+
+    def test_aggregate_timeout_preempts_retry_without_marking_it_started(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        session_id = "00000000-0000-4000-8000-000000000001"
+        first_failure = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": session_id,
+                    "model": "claude-opus-4-8",
+                },
+                {
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                    },
+                },
+                {
+                    "type": "result",
+                    "subtype": "error_max_structured_output_retries",
+                    "terminal_reason": "structured_output_retry_exhausted",
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "modelUsage": {
+                        "claude-opus-4-8": {
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                            "costUSD": 0.01,
+                        }
+                    },
+                },
+            )
+        ).encode()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            doctor_result = {
+                "claude": {
+                    "path": "/fake/claude",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
+                },
+                "warnings": [],
+            }
+            with (
+                mock.patch.object(
+                    runner,
+                    "run_bounded_process",
+                    return_value=(1, first_failure, b""),
+                ),
+                mock.patch.object(
+                    runner.time,
+                    "monotonic",
+                    side_effect=(0.0, 0.0, 61.0, 61.0),
+                ),
+            ):
+                with self.assertRaises(runner.AdvisorError) as captured:
+                    runner.execute_claude(
+                        kind="advisory",
+                        prompt_name="advisory-prompt.md",
+                        schema_name="advisory-schema.json",
+                        payload={"question": "Choose A or B", "context": []},
+                        request={"kind": "advisory"},
+                        source={"type": "advisory"},
+                        limits={
+                            "timeout": 60,
+                            "max_turns": 10,
+                            "max_budget_usd": 10.0,
+                            "model": "opus",
+                            "effort": "xhigh",
+                            "quality_profile": "critical",
+                            "standard_quality_acknowledged": False,
+                            "structured_output_attempts": 2,
+                            "retry_cost_acknowledged": True,
+                        },
+                        output_dir=str(root / "runs"),
+                        sensitive_override=False,
+                        sensitive_findings=[],
+                        doctor_result=doctor_result,
+                    )
+            self.assertEqual(captured.exception.code, 6)
+            run_dir = Path(captured.exception.payload["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertFalse(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(
+                receipt["resource_limits"]["retry_preempted_reason"],
+                "aggregate_timeout",
+            )
+            canonical_failure = run_dir / "claude-failure.json"
+            attempt_failure = run_dir / "claude-failure-attempt-1.json"
+            self.assertTrue(canonical_failure.is_file())
+            self.assertEqual(
+                json.loads(canonical_failure.read_text()),
+                json.loads(attempt_failure.read_text()),
+            )
+            self.assertEqual(
+                receipt["artifacts"]["claude_failure"], str(canonical_failure)
+            )
+
+    def test_unexpected_post_parse_error_finalizes_started_attempt(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        session_id = "00000000-0000-4000-8000-000000000001"
+        successful_stream = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": session_id,
+                    "model": "claude-opus-4-8",
+                },
+                {
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "content": [],
+                    },
+                },
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "session_id": session_id,
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "structured_output": ADVISORY_RESULT,
+                    "modelUsage": {
+                        "claude-opus-4-8": {
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                            "costUSD": 0.01,
+                        }
+                    },
+                },
+            )
+        ).encode()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            doctor_result = {
+                "claude": {
+                    "path": "/fake/claude",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
+                },
+                "warnings": [],
+            }
+            with (
+                mock.patch.object(
+                    runner,
+                    "run_bounded_process",
+                    return_value=(0, successful_stream, b""),
+                ),
+                mock.patch.object(
+                    runner,
+                    "collect_model_telemetry",
+                    side_effect=RuntimeError("synthetic telemetry failure"),
+                ),
+            ):
+                with self.assertRaises(runner.AdvisorError) as captured:
+                    runner.execute_claude(
+                        kind="advisory",
+                        prompt_name="advisory-prompt.md",
+                        schema_name="advisory-schema.json",
+                        payload={"question": "Choose A or B", "context": []},
+                        request={"kind": "advisory"},
+                        source={"type": "advisory"},
+                        limits={
+                            "timeout": 60,
+                            "max_turns": 10,
+                            "max_budget_usd": 10.0,
+                            "model": "opus",
+                            "effort": "xhigh",
+                            "quality_profile": "critical",
+                            "standard_quality_acknowledged": False,
+                            "structured_output_attempts": 1,
+                            "retry_cost_acknowledged": False,
+                        },
+                        output_dir=str(root / "runs"),
+                        sensitive_override=False,
+                        sensitive_findings=[],
+                        doctor_result=doctor_result,
+                    )
+            self.assertEqual(captured.exception.code, 9)
+            run_dir = Path(captured.exception.payload["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "internal_error")
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertEqual(
+                receipt["claude"]["attempts"][0]["outcome"], "internal_error"
+            )
 
 
 class SecurityTests(unittest.TestCase):
@@ -952,7 +1779,11 @@ class PullRequestTests(unittest.TestCase):
             receipt = json.loads(
                 (Path(stdout_json(completed)["run_dir"]) / "receipt.json").read_text()
             )
+            result = json.loads(
+                (Path(stdout_json(completed)["run_dir"]) / "result.json").read_text()
+            )
             self.assertEqual(receipt["claude"]["quality_profile"], "critical")
+            self.assertEqual(result, PR_RESULT)
             self.assertEqual(
                 receipt["claude"]["primary_model_observed"], "claude-opus-4-8"
             )

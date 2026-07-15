@@ -1,17 +1,95 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import unittest
 from pathlib import Path
 from urllib.parse import urlparse
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SUBMISSION = ROOT / "submission"
 PLUGIN = ROOT / "plugins" / "amanerp-second-opinion"
+RUNNER = PLUGIN / "scripts" / "second_opinion.py"
 
 
 class SubmissionPacketTests(unittest.TestCase):
+    def test_skill_cost_disclosures_match_runner_profile_budgets(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        advisory = (PLUGIN / "skills" / "independent-advisory" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        pr_review = (
+            PLUGIN / "skills" / "independent-pr-review" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        advisory_profiles = runner.ADVISORY_PROFILE_DEFAULTS
+        self.assertEqual(
+            advisory_profiles["deep"]["max_budget_usd"],
+            advisory_profiles["standard"]["max_budget_usd"],
+        )
+        self.assertIn(
+            "(critical: USD "
+            f"{advisory_profiles['critical']['max_budget_usd']:g} total; "
+            "deep/standard advisory: USD "
+            f"{advisory_profiles['deep']['max_budget_usd']:g} total)",
+            advisory,
+        )
+
+        pr_profiles = runner.PR_PROFILE_DEFAULTS
+        self.assertIn(
+            "(critical: USD "
+            f"{pr_profiles['critical']['max_budget_usd']:g} total; "
+            "deep PR review: USD "
+            f"{pr_profiles['deep']['max_budget_usd']:g} total; standard: USD "
+            f"{pr_profiles['standard']['max_budget_usd']:g} total)",
+            pr_review,
+        )
+
+    def test_advisory_contract_is_shallow_and_skill_owns_format_boundary(self) -> None:
+        schema = json.loads(
+            (PLUGIN / "references" / "advisory-schema.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("description", schema)
+        self.assertEqual(schema["required"], ["output"])
+        self.assertEqual(set(schema["properties"]), {"output"})
+        payload_schema = schema["properties"]["output"]
+        self.assertEqual(
+            set(payload_schema["required"]),
+            {
+                "status",
+                "verdict",
+                "confidence",
+                "executive_summary",
+                "analysis",
+                "material_risks",
+                "conditions_that_change_it",
+                "validation_steps",
+            },
+        )
+        self.assertFalse(
+            any(
+                property_schema.get("type") == "object"
+                for property_schema in payload_schema["properties"].values()
+            )
+        )
+        for name in ("advisory-schema.json", "pr-review-schema.json"):
+            contract = json.loads(
+                (PLUGIN / "references" / name).read_text(encoding="utf-8")
+            )
+            self.assertEqual(contract["required"], ["output"])
+            self.assertEqual(set(contract["properties"]), {"output"})
+            self.assertEqual(contract["additionalProperties"], False)
+        skill = (PLUGIN / "skills" / "independent-advisory" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("sole machine-output contract", skill)
+        self.assertIn("--structured-output-attempts 2", skill)
+        self.assertIn("--acknowledge-retry-cost", skill)
+
     def test_listing_uses_verified_amanerp_surfaces(self) -> None:
         listing = json.loads((SUBMISSION / "listing.json").read_text(encoding="utf-8"))
 

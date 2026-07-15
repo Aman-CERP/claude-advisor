@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "plugins" / "amanerp-second-opinion" / "scripts" / "second_opinion.py"
 
@@ -32,30 +31,17 @@ REQUIRED_HELP_FLAGS = [flag for flag in REQUIRED_FLAGS if flag != "--max-turns"]
 
 ADVISORY_RESULT: dict[str, Any] = {
     "status": "completed",
+    "verdict": "Choose Option A after validating the rollback path.",
+    "confidence": "high",
     "executive_summary": "Choose the bounded option after validating the rollback path.",
-    "facts": [
-        {
-            "claim": "The supplied constraint requires reversibility.",
-            "evidence": ["question"],
-        }
-    ],
-    "assumptions": ["The deployment window is fixed."],
-    "options": [
-        {
-            "name": "Option A",
-            "benefits": ["Reversible"],
-            "drawbacks": ["More setup"],
-            "risks": ["Operator error"],
-        }
-    ],
+    "analysis": (
+        "## Facts and evidence\n\nThe question requires reversibility.\n\n"
+        "## Assumptions and options\n\nThe deployment window is fixed. "
+        "Option A is reversible but requires more setup.\n\n"
+        "## Decision implications\n\nChoose A only after a rollback rehearsal."
+    ),
     "material_risks": ["Rollback has not been rehearsed."],
-    "recommendation": {
-        "choice": "Option A",
-        "rationale": "It meets the stated safety constraint.",
-        "confidence": "high",
-        "conditions_that_change_it": ["Rollback proves unavailable."],
-    },
-    "open_questions": ["Has rollback been rehearsed?"],
+    "conditions_that_change_it": ["Rollback proves unavailable."],
     "validation_steps": ["Run the rollback rehearsal."],
 }
 
@@ -153,6 +139,13 @@ if args == ["auth", "status", "--json"]:
 
 mode = control.get("FAKE_CLAUDE_MODE", "success")
 _ = sys.stdin.read()
+analysis_call_number = 0
+if log:
+    with open(log, encoding="utf-8") as handle:
+        analysis_call_number = sum(
+            1 for line in handle
+            if "--print" in json.loads(line).get("args", [])
+        )
 forced_stdout = int(control.get("FAKE_CLAUDE_STDOUT_BYTES", "0"))
 if forced_stdout:
     sys.stdout.write("x" * forced_stdout)
@@ -178,6 +171,10 @@ primary_model = control.get(
 initialized_model = control.get("FAKE_CLAUDE_INIT_MODEL", primary_model)
 assistant_model = control.get("FAKE_CLAUDE_ASSISTANT_MODEL", primary_model)
 usage_model = control.get("FAKE_CLAUDE_USAGE_MODEL", primary_model)
+if mode == "structured-retry-then-auxiliary" and analysis_call_number > 1:
+    initialized_model = "claude-haiku-4-5"
+    assistant_model = "claude-haiku-4-5"
+    usage_model = "claude-haiku-4-5"
 session_id = "00000000-0000-4000-8000-000000000001"
 if mode != "missing-init":
     print(json.dumps({
@@ -211,13 +208,75 @@ if mode == "error":
     }))
     print("token=very-secret-value", file=sys.stderr)
     raise SystemExit(23)
+if mode == "structured-retry-exhausted" or (
+    mode in ("structured-retry-once", "structured-retry-then-auxiliary")
+    and analysis_call_number == 1
+):
+    failure_cost_usd = float(control.get("FAKE_CLAUDE_FAILURE_COST_USD", "0.42"))
+    for index in range(6):
+        print(json.dumps({
+            "type": "assistant",
+            "session_id": session_id,
+            "message": {
+                "model": assistant_model,
+                "type": "message",
+                "role": "assistant",
+                "stop_reason": "tool_use",
+                "content": [{
+                    "type": "tool_use",
+                    "name": "StructuredOutput",
+                    "id": f"structured-{index}",
+                    "input": {"private_partial": "must not be retained"},
+                }],
+            },
+        }))
+        if index < 5:
+            print(json.dumps({
+                "type": "user",
+                "session_id": session_id,
+                "message": {
+                    "role": "user",
+                    "content": "private schema correction must not be retained",
+                },
+            }))
+    print(json.dumps({
+        "type": "system",
+        "subtype": "structured_output_retry",
+        "session_id": session_id,
+    }))
+    print(json.dumps({
+        "type": "result",
+        "subtype": "error_max_structured_output_retries",
+        "terminal_reason": "structured_output_retry_exhausted",
+        "errors": [
+            "Output does not match required schema: root: must have required property 'output'",
+            "Output does not match required schema: root: must NOT have additional properties",
+            "private validation detail must not be retained",
+        ],
+        "is_error": True,
+        "duration_ms": 1200,
+        "duration_api_ms": 1100,
+        "num_turns": 6,
+        "total_cost_usd": failure_cost_usd,
+        "session_id": session_id,
+        "result": "private partial response must not be retained",
+        "modelUsage": {
+            usage_model: {
+                "inputTokens": 40,
+                "outputTokens": 60,
+                "costUSD": failure_cost_usd,
+            }
+        },
+    }))
+    raise SystemExit(1)
+reported_cost_usd = float(control.get("FAKE_CLAUDE_TOTAL_COST_USD", "0.01"))
 model_usage = {
     usage_model: {
         "inputTokens": 10,
         "outputTokens": 20,
         "cacheReadInputTokens": 5,
         "cacheCreationInputTokens": 3,
-        "costUSD": 0.01,
+        "costUSD": reported_cost_usd,
     }
 }
 auxiliary_model = control.get("FAKE_CLAUDE_AUX_MODEL")
@@ -238,9 +297,9 @@ envelope = {
     "duration_ms": 12,
     "duration_api_ms": 10,
     "num_turns": 2,
-    "total_cost_usd": 0.01,
+    "total_cost_usd": reported_cost_usd,
     "session_id": "00000000-0000-4000-8000-000000000001",
-    "structured_output": result,
+    "structured_output": {"output": result},
     "modelUsage": model_usage,
 }
 if mode == "no-structured-output":

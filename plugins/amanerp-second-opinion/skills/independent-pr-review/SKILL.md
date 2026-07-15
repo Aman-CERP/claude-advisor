@@ -17,6 +17,7 @@ Use this skill for an independent review snapshot with durable provenance. It ne
 - Do not post review findings to GitHub without a separate, explicit user request.
 - Default to the Opus `deep` profile. Use Opus/xhigh `critical` for auth, authorization, tenancy, billing, migrations, PII, secrets, destructive operations, incident/compliance work, or release gating.
 - Use Sonnet `standard` only when the user explicitly requests a lower-cost standard review after being told it replaces Opus. Never silently downgrade or retry with Sonnet after an Opus failure.
+- A same-model structured-output retry is explicit: disclose the exact selected-profile aggregate ledger before seeking authorization (critical: USD 10 total; deep PR review: USD 8 total; standard: USD 5 total). Attempt one may request the full aggregate ceiling. After an eligible failure, attempt two requests the verified remaining balance—aggregate ceiling minus attempt-one reported cost, rounded down to cents—and is preempted when less than USD 0.10 remains. Use `--structured-output-attempts 2 --acknowledge-retry-cost` only after authorization following that disclosure; generic rerun permission is insufficient. It is limited to Claude's structured-output retry-exhausted outcome and preserves the model, effort, snapshot, prompt, schema, and isolation controls inside aggregate time and budget ceilings.
 - Never run `doctor --check-update` automatically. Use it only when the user explicitly asks for update status, and never run a Codex marketplace command without separate authorization.
 
 ## Workflow
@@ -24,7 +25,7 @@ Use this skill for an independent review snapshot with durable provenance. It ne
 1. Identify the authoritative repository and PR number. Confirm the requested review scope and whether it is critical (auth, tenancy, billing, migrations, PII, secrets, destructive operations, or release gating).
 2. Resolve `../../scripts/second_opinion.py` relative to this `SKILL.md` to an absolute `RUNNER` path. Never guess a plugin-cache path.
 3. Run `python3 "$RUNNER" doctor --require-gh` for GitHub mode. Stop and report any non-zero outcome.
-4. Run `pr-review --pr N --repo OWNER/REPO`. Add `--critical` for a critical surface. For pre-PR or offline work, use `--diff-file` plus `--source-label` instead. Use `--quality standard --acknowledge-standard-quality` only after explicit user authorization.
+4. Run `pr-review --pr N --repo OWNER/REPO`. Add `--critical` for a critical surface. For pre-PR or offline work, use `--diff-file` plus `--source-label` instead. Use `--quality standard --acknowledge-standard-quality` only after explicit user authorization. Use `--structured-output-attempts 2 --acknowledge-retry-cost` only for an explicitly authorized same-model retry.
 5. The runner reads PR metadata, captures the unified diff, reads the head object ID again, and aborts if the PR changed during capture.
 6. Read `report.md`, `result.json`, and `receipt.json`. Confirm `success`, the immutable revision metadata/diff hash, every isolation control, a profile-matching `primary_model_observed`, and an empty `auxiliary_models_observed` list.
 7. Reproduce each material finding against the exact reviewed revision. Classify it as accepted, rejected with evidence, or unresolved. Fix accepted findings only when the user has also authorized code changes.

@@ -58,7 +58,7 @@ Neither skill can be invoked implicitly. Before execution, Codex tells the user 
 - `critical` uses Opus with xhigh effort for security, architecture, irreversible operations, incident/compliance work, and release gates. Select it with `--critical` or `--quality critical`.
 - `standard` uses Sonnet with high effort. It is a deliberate lower-cost option, not a fallback. It requires `--quality standard --acknowledge-standard-quality`; skill-driven runs require the user to authorize and be told about the Sonnet substitution first.
 
-The public runner does not accept arbitrary model or effort overrides and never retries with another model. It names every Claude session deterministically to suppress auxiliary title generation, verifies the initialized and answering model from verbose stream events, and fails without publishing a result if the observed family differs or any auxiliary model is used.
+The public runner does not accept arbitrary model or effort overrides and never retries with another model. One attempt is the default. A second same-model attempt requires `--structured-output-attempts 2 --acknowledge-retry-cost`, runs only after Claude reports structured-output retry exhaustion, and preserves the model, effort, input, prompt, schema, and isolation controls inside aggregate budget and timeout ceilings. Attempt one receives the aggregate ceiling; an eligible retry receives only the unused balance calculated from verified reported cost and is preempted when less than USD 0.10 remains. The runner names every Claude session deterministically to suppress auxiliary title generation, verifies the initialized and answering model from verbose stream events, and fails without publishing a result if the observed family differs or any auxiliary model is used.
 
 Profiles intentionally use Anthropic's moving `opus` and `sonnet` aliases so new compatible model releases can be adopted without freezing the plugin to an older model ID. Every receipt records the fully resolved answering model and Claude Code version for auditability.
 
@@ -86,6 +86,10 @@ python3 "$RUNNER" advisory \
   --context-file /absolute/path/to/approved-context.md
 ```
 
+Keep the question focused on the decision, evidence, constraints, options, and
+desired analysis topics. Do not embed custom JSON keys, schemas, or response
+templates; the bundled schema is the sole machine-output contract.
+
 GitHub pull-request review:
 
 ```bash
@@ -112,6 +116,16 @@ python3 "$RUNNER" advisory \
   --acknowledge-standard-quality
 ```
 
+Explicit same-Opus retry after structured-output exhaustion:
+
+```bash
+python3 "$RUNNER" advisory \
+  --question-file /absolute/path/to/question.md \
+  --critical \
+  --structured-output-attempts 2 \
+  --acknowledge-retry-cost
+```
+
 The runner writes one compact JSON summary to stdout and diagnostics to stderr. Stable non-zero exit codes distinguish invalid input, missing dependencies, authentication failure, model failure, timeout, invalid structured output, GitHub read failure, and internal error.
 
 ## Data flow and artifacts
@@ -128,12 +142,12 @@ By default, runs are stored under `.codex/amanerp-second-opinion/runs/` in the c
 - `request.json` — sanitized configuration and source metadata;
 - `input.sha256` — hash of the exact prompt and untrusted input bundle;
 - `claude-response.json` — the model's JSON envelope;
-- `result.json` — the locally schema-validated result;
+- `result.json` — the locally schema-validated consumer result after removal of the provider-facing `output` compatibility envelope;
 - `report.md` — deterministic human-readable rendering;
 - `receipt.json` — versions, revisions, hashes, limits, controls, outcome, and safe usage metadata;
 - `stderr.log` — redacted child-process diagnostics.
 
-On a non-zero Claude exit, `claude-failure.json` records a bounded, redacted event summary without retaining the raw failed stream. Receipt schema 2 distinguishes the requested family, observed answering model, every observed identifier in the requested family, auxiliary model families, and per-model role/token/cost usage. Identifier variants within the requested family remain primary so moving aliases and dated IDs cannot create a false downgrade alarm. The former `resolved_models` field remains only as a deprecated compatibility alias.
+On a non-zero Claude exit, `claude-failure.json` records a bounded, redacted event summary without retaining the raw failed stream, terminal result prose, or validation-message text. Structured-output exhaustion additionally records only safe event/subtype, tool-attempt, correction, terminal-error category, usage, and model counts. Receipt schema 3 distinguishes the requested family, observed answering model, every observed identifier in the requested family, auxiliary model families, per-model role/token/cost usage, authorized attempts, attempts started, retry status, aggregate budget strategy, and the actual ceiling passed to each started attempt. Identifier variants within the requested family remain primary so moving aliases and dated IDs cannot create a false downgrade alarm. The former `resolved_models` field remains only as a deprecated compatibility alias.
 
 Run files use owner-only permissions where supported. Input hashes prove identity, not content; preserve an approved source snapshot separately when content-level auditability is required.
 
