@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Three PR review passes complete; final agreement rerun pending
+Status: Four PR review passes complete; focused closure advisory pending
 
 ## Incident
 
@@ -141,3 +141,22 @@ Claude also noted no direct test for a successful recovered attempt using an
 off-family answering model. The normal success gate already enforced this, and a
 new regression now forces Opus exhaustion followed by a Haiku success envelope;
 the run exits `model_policy_violation` and publishes no result.
+
+### Fourth immutable-head PR review
+
+- Reviewed head: `e24496a5a2fb70e5ae070e40c0a2bc1a09345824`
+- Diff SHA-256: `2b911c1f32f52667b4c321c413466a1e548586095873c70f802f4f53b8aadced`
+- Run: `20260715T074727Z-pr-review-470a47c6`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 2 / USD 1.1737865
+- Material gate: no critical, high, or medium finding
+
+Claude reported one low audit-completeness finding: an exit-zero attempt rejected
+by a post-parse model, usage, ceiling, extraction, or schema gate did not receive
+an attempt record. Accepted and fixed: the runner appends a pending content-free
+record as soon as an exit-zero envelope is parsed, then finalizes the concrete
+gate outcome. Malformed exit-zero streams receive a minimal invalid-result record
+at the parse boundary. Regression assertions cover schema-invalid, ceiling-breach,
+and recovered-attempt model-policy outcomes, including two attempt records for the
+Opus-to-Haiku case.

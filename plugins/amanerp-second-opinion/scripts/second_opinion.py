@@ -1751,7 +1751,21 @@ def execute_claude(
             receipt["stderr_redactions"] = total_redactions
             receipt["claude_exit_code"] = claude_exit_code
             if claude_exit_code == 0:
-                events, envelope = parse_claude_stream(claude_stdout)
+                try:
+                    events, envelope = parse_claude_stream(claude_stdout)
+                except AdvisorError as exc:
+                    receipt["claude"]["attempts"].append(
+                        {
+                            "attempt": attempt_number,
+                            "exit_code": claude_exit_code,
+                            "outcome": exc.outcome,
+                            "models_observed": [],
+                            "model_usage": [],
+                            "model_policy_verified": False,
+                            "model_policy_violation": False,
+                        }
+                    )
+                    raise
                 break
 
             failure_summary = summarize_failed_stream(
@@ -1880,7 +1894,21 @@ def execute_claude(
             }
         )
         receipt["artifacts"]["claude_response"] = str(response_path)
+        completed_attempt_record = {
+            "attempt": attempt_number,
+            "exit_code": claude_exit_code,
+            "outcome": "pending_validation",
+            "session_id": envelope.get("session_id"),
+            "num_turns": reported_turns,
+            "reported_cost_usd": reported_cost,
+            "models_observed": model_telemetry["models_observed"],
+            "model_usage": model_telemetry["model_usage"],
+            "model_policy_verified": not model_issues,
+            "model_policy_violation": bool(model_issues),
+        }
+        receipt["claude"]["attempts"].append(completed_attempt_record)
         if model_issues:
+            completed_attempt_record["outcome"] = "model_policy_violation"
             receipt["claude"]["model_policy_violations"] = model_issues
             raise AdvisorError(
                 EXIT_CLAUDE,
@@ -1888,12 +1916,14 @@ def execute_claude(
                 outcome="model_policy_violation",
             )
         if not turns_observed or not cost_observed:
+            completed_attempt_record["outcome"] = "usage_unverified"
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude did not report valid turn and cost usage",
                 outcome="usage_unverified",
             )
         if reported_turns > limits["max_turns"]:
+            completed_attempt_record["outcome"] = "ceiling_breach"
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude exceeded the requested turn ceiling",
@@ -1902,24 +1932,19 @@ def execute_claude(
         if reported_cost > limits["per_attempt_budget_usd"] or (
             failed_reported_cost + reported_cost > limits["max_budget_usd"]
         ):
+            completed_attempt_record["outcome"] = "ceiling_breach"
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude exceeded the requested cost ceiling",
                 outcome="ceiling_breach",
             )
-        result = extract_structured_output(envelope)
-        validate_result(result, schema)
-        receipt["claude"]["attempts"].append(
-            {
-                "attempt": attempt_number,
-                "exit_code": claude_exit_code,
-                "outcome": "success",
-                "session_id": envelope.get("session_id"),
-                "num_turns": reported_turns,
-                "reported_cost_usd": reported_cost,
-                "models_observed": model_telemetry["models_observed"],
-            }
-        )
+        try:
+            result = extract_structured_output(envelope)
+            validate_result(result, schema)
+        except AdvisorError as exc:
+            completed_attempt_record["outcome"] = exc.outcome
+            raise
+        completed_attempt_record["outcome"] = "success"
         result_path = run_dir / "result.json"
         report_path = run_dir / "report.md"
         atomic_write_json(result_path, result)

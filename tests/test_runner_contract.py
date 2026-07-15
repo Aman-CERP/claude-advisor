@@ -528,6 +528,9 @@ class AdvisoryTests(unittest.TestCase):
                     (Path(summary["run_dir"]) / "receipt.json").read_text()
                 )
                 self.assertEqual(receipt["outcome"], "invalid_result")
+                self.assertEqual(
+                    receipt["claude"]["attempts"][0]["outcome"], "invalid_result"
+                )
 
     def test_advisory_rejects_malformed_or_missing_structured_output(self) -> None:
         for mode in ("malformed", "no-structured-output"):
@@ -606,6 +609,9 @@ class AdvisoryTests(unittest.TestCase):
                 run_dir = Path(stdout_json(completed)["run_dir"])
                 receipt = json.loads((run_dir / "receipt.json").read_text())
                 self.assertEqual(receipt["outcome"], "ceiling_breach")
+                self.assertEqual(
+                    receipt["claude"]["attempts"][0]["outcome"], "ceiling_breach"
+                )
                 self.assertFalse((run_dir / "result.json").exists())
 
     def test_advisory_rejects_missing_or_mistyped_usage_evidence(self) -> None:
@@ -978,6 +984,11 @@ class AdvisoryTests(unittest.TestCase):
             receipt = json.loads((run_dir / "receipt.json").read_text())
             self.assertEqual(receipt["outcome"], "model_policy_violation")
             self.assertTrue(receipt["resource_limits"]["retry_triggered"])
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 2)
+            self.assertEqual(
+                [attempt["outcome"] for attempt in receipt["claude"]["attempts"]],
+                ["structured_output_retry_exhausted", "model_policy_violation"],
+            )
             self.assertFalse((run_dir / "result.json").exists())
             calls = [
                 call for call in read_jsonl(claude_log) if "--print" in call["args"]
