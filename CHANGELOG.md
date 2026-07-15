@@ -22,12 +22,14 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Replaced arbitrary model/effort overrides with auditable `standard`, `deep`, and `critical` quality profiles. Both skills now default to Opus/high, critical work uses Opus/xhigh, and Sonnet requires an explicitly acknowledged standard run.
 - Switched analysis capture to verified verbose stream JSON while retaining the compact terminal response artifact. Receipts now distinguish requested, answering, and auxiliary models with normalized per-model usage.
 - Added deterministic session names to suppress Claude Code's auxiliary Haiku title-generation call and fail closed on any unapproved answering or auxiliary model.
+- Classified moving-alias and dated identifiers within the requested model family as primary while continuing to reject every different-family auxiliary model.
 - Added redacted `claude-failure.json` diagnostics for non-zero Claude exits and prohibited automatic model fallback after failure.
 
 ### Migration
 
 - Remove `claude-advisor@aman-cerp` before installing `amanerp-second-opinion@amanerp`.
 - Existing `.codex/claude-advisor/` artifacts remain untouched.
+- The legacy artifact directory remains gitignored alongside the new path to prevent an upgrade from exposing prior review data to accidental staging.
 
 ## [0.1.0] - 2026-07-14
 
