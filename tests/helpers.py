@@ -10,7 +10,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "plugins" / "claude-advisor" / "scripts" / "claude_advisor.py"
+RUNNER = ROOT / "plugins" / "amanerp-second-opinion" / "scripts" / "second_opinion.py"
 
 REQUIRED_FLAGS = [
     "--print",
@@ -18,7 +18,9 @@ REQUIRED_FLAGS = [
     "--tools",
     "--no-chrome",
     "--no-session-persistence",
+    "--name",
     "--output-format",
+    "--verbose",
     "--json-schema",
     "--max-turns",
     "--max-budget-usd",
@@ -91,7 +93,7 @@ from pathlib import Path
 
 args = sys.argv[1:]
 control = json.loads(
-    (Path(sys.argv[0]).resolve().parent / ".claude-advisor-test-control.json").read_text(
+    (Path(sys.argv[0]).resolve().parent / ".second-opinion-test-control.json").read_text(
         encoding="utf-8"
     )
 )
@@ -117,7 +119,7 @@ if args == ["--version"]:
     if forced_stdout:
         sys.stdout.write("x" * forced_stdout)
         raise SystemExit(0)
-    print(control.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    print(control.get("FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"))
     raise SystemExit(0)
 
 if args == ["--help"]:
@@ -132,7 +134,7 @@ if args == ["--max-turns", "1", "--version"]:
     if control.get("FAKE_CLAUDE_MAX_TURNS", "present") != "present":
         print("error: unknown option '--max-turns'", file=sys.stderr)
         raise SystemExit(1)
-    print(control.get("FAKE_CLAUDE_VERSION", "2.1.209 (Claude Code)"))
+    print(control.get("FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"))
     raise SystemExit(0)
 
 if args == ["auth", "status", "--json"]:
@@ -157,9 +159,6 @@ if forced_stdout:
     raise SystemExit(0)
 if mode == "timeout":
     time.sleep(10)
-if mode == "error":
-    print("token=very-secret-value", file=sys.stderr)
-    raise SystemExit(23)
 if mode == "malformed":
     print("not-json")
     raise SystemExit(0)
@@ -171,6 +170,67 @@ if mode == "extra-property":
     result["unexpected"] = "must fail"
 if mode == "negative-line":
     result["findings"][0]["line"] = -1
+requested_model = args[args.index("--model") + 1]
+primary_model = control.get(
+    "FAKE_CLAUDE_PRIMARY_MODEL",
+    "claude-opus-4-8" if requested_model == "opus" else "claude-sonnet-4-6",
+)
+initialized_model = control.get("FAKE_CLAUDE_INIT_MODEL", primary_model)
+assistant_model = control.get("FAKE_CLAUDE_ASSISTANT_MODEL", primary_model)
+usage_model = control.get("FAKE_CLAUDE_USAGE_MODEL", primary_model)
+session_id = "00000000-0000-4000-8000-000000000001"
+if mode != "missing-init":
+    print(json.dumps({
+        "type": "system",
+        "subtype": "init",
+        "session_id": session_id,
+        "model": initialized_model,
+        "claude_code_version": control.get(
+            "FAKE_CLAUDE_VERSION", "2.1.210 (Claude Code)"
+        ).split()[0],
+    }))
+if mode != "missing-assistant":
+    print(json.dumps({
+        "type": "assistant",
+        "session_id": session_id,
+        "message": {
+            "model": assistant_model,
+            "type": "message",
+            "role": "assistant",
+            "content": [],
+        },
+    }))
+if mode == "error":
+    print(json.dumps({
+        "type": "result",
+        "subtype": "error_during_execution",
+        "is_error": True,
+        "session_id": session_id,
+        "result": "provider token=very-secret-value failed",
+        "modelUsage": {usage_model: {"inputTokens": 4, "outputTokens": 1}},
+    }))
+    print("token=very-secret-value", file=sys.stderr)
+    raise SystemExit(23)
+model_usage = {
+    usage_model: {
+        "inputTokens": 10,
+        "outputTokens": 20,
+        "cacheReadInputTokens": 5,
+        "cacheCreationInputTokens": 3,
+        "costUSD": 0.01,
+    }
+}
+auxiliary_model = control.get("FAKE_CLAUDE_AUX_MODEL")
+if auxiliary_model:
+    model_usage[auxiliary_model] = {
+        "inputTokens": 10,
+        "outputTokens": 2,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "costUSD": 0.001,
+    }
+if mode == "invalid-model-usage":
+    model_usage[usage_model]["costUSD"] = "0.01"
 envelope = {
     "type": "result",
     "subtype": "success",
@@ -181,7 +241,7 @@ envelope = {
     "total_cost_usd": 0.01,
     "session_id": "00000000-0000-4000-8000-000000000001",
     "structured_output": result,
-    "modelUsage": {"fake-model": {"inputTokens": 10, "outputTokens": 20}},
+    "modelUsage": model_usage,
 }
 if mode == "no-structured-output":
     envelope.pop("structured_output")
@@ -193,7 +253,8 @@ if mode == "missing-turn-usage":
     envelope.pop("num_turns")
 if mode == "string-cost-usage":
     envelope["total_cost_usd"] = "0.01"
-print(json.dumps(envelope))
+if mode != "missing-result":
+    print(json.dumps(envelope))
 """
 )
 
@@ -206,7 +267,7 @@ from pathlib import Path
 
 args = sys.argv[1:]
 control = json.loads(
-    (Path(sys.argv[0]).resolve().parent / ".claude-advisor-test-control.json").read_text(
+    (Path(sys.argv[0]).resolve().parent / ".second-opinion-test-control.json").read_text(
         encoding="utf-8"
     )
 )
@@ -228,8 +289,39 @@ if log:
 if args == ["--version"]:
     print("gh version 2.92.0 (fake)")
     raise SystemExit(0)
-if args == ["auth", "status"]:
+if args in (
+    ["auth", "status"],
+    ["auth", "status", "--hostname", "github.com"],
+):
     raise SystemExit(0 if control.get("FAKE_GH_AUTH", "ok") == "ok" else 1)
+if args == [
+    "api",
+    "--hostname",
+    "github.com",
+    "repos/Aman-CERP/amanerp-second-opinion/releases/latest",
+    "--method",
+    "GET",
+    "--header",
+    "Accept: application/vnd.github+json",
+]:
+    mode = control.get("FAKE_GH_RELEASE_MODE", "success")
+    if mode == "failure":
+        raise SystemExit(1)
+    if mode == "malformed-json":
+        print("{not-json")
+        raise SystemExit(0)
+    tag = control.get("FAKE_GH_LATEST_TAG", "v0.3.0")
+    url = control.get(
+        "FAKE_GH_RELEASE_URL",
+        f"https://github.com/Aman-CERP/amanerp-second-opinion/releases/tag/{tag}",
+    )
+    print(json.dumps({
+        "tag_name": tag,
+        "html_url": url,
+        "draft": control.get("FAKE_GH_RELEASE_DRAFT", "false") == "true",
+        "prerelease": control.get("FAKE_GH_RELEASE_PRERELEASE", "false") == "true",
+    }))
+    raise SystemExit(0)
 if args[:2] == ["pr", "diff"]:
     forced_size = int(control.get("FAKE_GH_DIFF_BYTES", "0"))
     if forced_size:
@@ -286,8 +378,8 @@ def fake_environment(
     env = os.environ.copy()
     env.update(
         {
-            "CLAUDE_ADVISOR_CLAUDE_BIN": str(claude),
-            "CLAUDE_ADVISOR_GH_BIN": str(gh),
+            "AMANERP_SECOND_OPINION_CLAUDE_BIN": str(claude),
+            "AMANERP_SECOND_OPINION_GH_BIN": str(gh),
             "FAKE_CLAUDE_LOG": str(claude_log),
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_CLAUDE_RESULT": json.dumps(result or ADVISORY_RESULT),
@@ -307,8 +399,8 @@ def run_cli(
 ) -> subprocess.CompletedProcess[str]:
     control = {name: value for name, value in env.items() if name.startswith("FAKE_")}
     control_path = (
-        Path(env["CLAUDE_ADVISOR_CLAUDE_BIN"]).parent
-        / ".claude-advisor-test-control.json"
+        Path(env["AMANERP_SECOND_OPINION_CLAUDE_BIN"]).parent
+        / ".second-opinion-test-control.json"
     )
     control_path.write_text(json.dumps(control), encoding="utf-8")
     return subprocess.run(

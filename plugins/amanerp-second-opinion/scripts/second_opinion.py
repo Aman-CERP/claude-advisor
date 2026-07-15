@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safety-first local orchestration for independent Claude advisory work."""
+"""Safety-first local orchestration for independent second-opinion work."""
 
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ from pathlib import Path
 from typing import Any, Literal, NoReturn
 
 
-PLUGIN_VERSION = "0.1.0"
-SCHEMA_VERSION = "1"
+PLUGIN_VERSION = "0.2.0"
+SCHEMA_VERSION = "2"
 MIN_PYTHON = (3, 11)
-MIN_CLAUDE = (2, 1, 209)
-HIGHEST_TESTED_CLAUDE = (2, 1, 209)
+MIN_CLAUDE = (2, 1, 210)
+HIGHEST_TESTED_CLAUDE = (2, 1, 210)
 MAX_SINGLE_FILE_BYTES = 6 * 1024 * 1024
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 MAX_CONTEXT_FILES = 32
@@ -56,7 +56,9 @@ REQUIRED_HELP_FLAGS = (
     "--tools",
     "--no-chrome",
     "--no-session-persistence",
+    "--name",
     "--output-format",
+    "--verbose",
     "--json-schema",
     "--max-budget-usd",
     "--model",
@@ -126,9 +128,62 @@ SUPPORTED_SCHEMA_KEYS = {
     "maximum",
 }
 
-MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 VERSION_PATTERN = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+STABLE_RELEASE_TAG_PATTERN = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+UPDATE_REPOSITORY = "Aman-CERP/amanerp-second-opinion"
+UPDATE_ENDPOINT = f"repos/{UPDATE_REPOSITORY}/releases/latest"
+GIT_MARKETPLACE_UPDATE_COMMAND = "codex plugin marketplace upgrade amanerp"
+
+QUALITY_PROFILES = ("standard", "deep", "critical")
+ADVISORY_PROFILE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "standard": {
+        "timeout": 900,
+        "max_turns": 6,
+        "max_budget_usd": 5.0,
+        "model": "sonnet",
+        "effort": "high",
+    },
+    "deep": {
+        "timeout": 900,
+        "max_turns": 6,
+        "max_budget_usd": 5.0,
+        "model": "opus",
+        "effort": "high",
+    },
+    "critical": {
+        "timeout": 1500,
+        "max_turns": 10,
+        "max_budget_usd": 10.0,
+        "model": "opus",
+        "effort": "xhigh",
+    },
+}
+PR_PROFILE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "standard": {
+        "timeout": 1200,
+        "max_turns": 8,
+        "max_budget_usd": 5.0,
+        "model": "sonnet",
+        "effort": "high",
+    },
+    "deep": {
+        "timeout": 1200,
+        "max_turns": 8,
+        "max_budget_usd": 8.0,
+        "model": "opus",
+        "effort": "high",
+    },
+    "critical": {
+        "timeout": 1500,
+        "max_turns": 10,
+        "max_budget_usd": 10.0,
+        "model": "opus",
+        "effort": "xhigh",
+    },
+}
 
 HIGH_RISK_BASENAMES = {
     ".env",
@@ -469,13 +524,13 @@ def version_string(value: tuple[int, int, int]) -> str:
     return ".".join(str(part) for part in value)
 
 
-def doctor(*, require_gh: bool) -> dict[str, Any]:
+def doctor(*, require_gh: bool, check_update: bool = False) -> dict[str, Any]:
     if sys.version_info < MIN_PYTHON:
         raise AdvisorError(
             EXIT_DEPENDENCY, "Python 3.11 or newer is required", outcome="unavailable"
         )
 
-    claude = resolve_executable("CLAUDE_ADVISOR_CLAUDE_BIN", "claude")
+    claude = resolve_executable("AMANERP_SECOND_OPINION_CLAUDE_BIN", "claude")
     version_result = run_probe([claude, "--version"], child_kind="claude")
     if version_result.returncode != 0:
         raise AdvisorError(
@@ -563,8 +618,8 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
         "warnings": warnings,
     }
 
-    if require_gh:
-        gh = resolve_executable("CLAUDE_ADVISOR_GH_BIN", "gh")
+    if require_gh or check_update:
+        gh = resolve_executable("AMANERP_SECOND_OPINION_GH_BIN", "gh")
         gh_version_result = run_probe([gh, "--version"], child_kind="github")
         if gh_version_result.returncode != 0:
             raise AdvisorError(
@@ -573,7 +628,10 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
                 outcome="unavailable",
             )
         gh_version = parse_version(gh_version_result.stdout, "GitHub CLI")
-        gh_auth = run_probe([gh, "auth", "status"], child_kind="github")
+        gh_auth_arguments = ["auth", "status"]
+        if check_update:
+            gh_auth_arguments.extend(["--hostname", "github.com"])
+        gh_auth = run_probe([gh, *gh_auth_arguments], child_kind="github")
         if gh_auth.returncode != 0:
             raise AdvisorError(
                 EXIT_AUTH, "GitHub CLI is not authenticated", outcome="unavailable"
@@ -583,6 +641,8 @@ def doctor(*, require_gh: bool) -> dict[str, Any]:
             "version": version_string(gh_version),
             "authenticated": True,
         }
+        if check_update:
+            result["update"] = get_update_status(gh)
 
     return result
 
@@ -591,7 +651,7 @@ def ensure_regular_output_base(raw_path: str | None) -> Path:
     requested = (
         Path(raw_path).expanduser()
         if raw_path
-        else Path.cwd() / ".codex" / "claude-advisor" / "runs"
+        else Path.cwd() / ".codex" / "amanerp-second-opinion" / "runs"
     )
     if requested.exists() and requested.is_symlink():
         raise AdvisorError(
@@ -902,8 +962,23 @@ def validate_result(value: Any, schema: dict[str, Any], path: str = "$") -> None
 
 
 def validate_common_options(
-    args: argparse.Namespace, *, defaults: dict[str, Any]
+    args: argparse.Namespace, *, profiles: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
+    quality = args.quality or "deep"
+    defaults = profiles[quality]
+    standard_acknowledged = bool(args.acknowledge_standard_quality)
+    if quality == "standard" and not standard_acknowledged:
+        raise AdvisorError(
+            EXIT_USAGE,
+            "--quality standard requires --acknowledge-standard-quality",
+            outcome="rejected",
+        )
+    if quality != "standard" and standard_acknowledged:
+        raise AdvisorError(
+            EXIT_USAGE,
+            "--acknowledge-standard-quality is only valid with --quality standard",
+            outcome="rejected",
+        )
     timeout = args.timeout if args.timeout is not None else defaults["timeout"]
     turns = args.max_turns if args.max_turns is not None else defaults["max_turns"]
     budget = (
@@ -911,8 +986,8 @@ def validate_common_options(
         if args.max_budget_usd is not None
         else defaults["max_budget_usd"]
     )
-    model = args.model if args.model is not None else defaults["model"]
-    effort = args.effort if args.effort is not None else defaults["effort"]
+    model = defaults["model"]
+    effort = defaults["effort"]
     if not 60 <= timeout <= 1800:
         raise AdvisorError(
             EXIT_USAGE,
@@ -929,26 +1004,22 @@ def validate_common_options(
             "max budget must be between USD 0.10 and USD 20.00",
             outcome="rejected",
         )
-    if not MODEL_PATTERN.fullmatch(model):
-        raise AdvisorError(
-            EXIT_USAGE, "model contains unsupported characters", outcome="rejected"
-        )
-    if effort not in {"low", "medium", "high", "xhigh", "max"}:
-        raise AdvisorError(EXIT_USAGE, "effort is not supported", outcome="rejected")
     return {
         "timeout": timeout,
         "max_turns": turns,
         "max_budget_usd": budget,
         "model": model,
         "effort": effort,
+        "quality_profile": quality,
+        "standard_quality_acknowledged": standard_acknowledged,
     }
 
 
 def assemble_untrusted_input(payload: dict[str, Any]) -> str:
     return (
-        "<<<CLAUDE_ADVISOR_UNTRUSTED_INPUT_V1>>>\n"
+        "<<<AMANERP_SECOND_OPINION_UNTRUSTED_INPUT_V1>>>\n"
         + json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-        + "\n<<<END_CLAUDE_ADVISOR_UNTRUSTED_INPUT_V1>>>\n"
+        + "\n<<<END_AMANERP_SECOND_OPINION_UNTRUSTED_INPUT_V1>>>\n"
     )
 
 
@@ -981,6 +1052,274 @@ def extract_structured_output(envelope: Any) -> dict[str, Any]:
             outcome="invalid_result",
         )
     return structured
+
+
+def parse_claude_stream(raw: bytes) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise AdvisorError(
+            EXIT_INVALID_RESULT,
+            "Claude response is not valid UTF-8",
+            outcome="invalid_result",
+        ) from exc
+    events: list[dict[str, Any]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise AdvisorError(
+                EXIT_INVALID_RESULT,
+                f"Claude stream event {line_number} is not valid JSON",
+                outcome="invalid_result",
+            ) from exc
+        if not isinstance(event, dict):
+            raise AdvisorError(
+                EXIT_INVALID_RESULT,
+                f"Claude stream event {line_number} is not an object",
+                outcome="invalid_result",
+            )
+        events.append(event)
+    terminal_events = [event for event in events if event.get("type") == "result"]
+    if len(terminal_events) != 1:
+        raise AdvisorError(
+            EXIT_INVALID_RESULT,
+            "Claude stream did not contain exactly one terminal result",
+            outcome="invalid_result",
+        )
+    return events, terminal_events[0]
+
+
+def safe_model_id(value: Any) -> str | None:
+    return (
+        value if isinstance(value, str) and MODEL_ID_PATTERN.fullmatch(value) else None
+    )
+
+
+def valid_nonnegative_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    )
+
+
+def valid_nonnegative_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def model_matches_family(model: str, family: str) -> bool:
+    return model == family or model.startswith(f"claude-{family}-")
+
+
+def collect_model_telemetry(
+    events: list[dict[str, Any]],
+    envelope: dict[str, Any],
+    *,
+    requested_family: str,
+) -> tuple[dict[str, Any], list[str]]:
+    issues: list[str] = []
+    initialized_models: set[str] = set()
+    assistant_models: set[str] = set()
+
+    for event in events:
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            model = safe_model_id(event.get("model"))
+            if model is None:
+                issues.append("initialization model is missing or invalid")
+            else:
+                initialized_models.add(model)
+        if event.get("type") == "assistant":
+            message = event.get("message")
+            model = safe_model_id(
+                message.get("model") if isinstance(message, dict) else None
+            )
+            if model is None:
+                issues.append("assistant model is missing or invalid")
+            else:
+                assistant_models.add(model)
+
+    if len(initialized_models) != 1:
+        issues.append("exactly one initialization model is required")
+    if len(assistant_models) != 1:
+        issues.append("exactly one answering model is required")
+
+    initialized_model = (
+        next(iter(initialized_models)) if len(initialized_models) == 1 else None
+    )
+    primary_model = next(iter(assistant_models)) if len(assistant_models) == 1 else None
+    if initialized_model and not model_matches_family(
+        initialized_model, requested_family
+    ):
+        issues.append(
+            "initialization model does not match the requested quality profile"
+        )
+    if primary_model and not model_matches_family(primary_model, requested_family):
+        issues.append("answering model does not match the requested quality profile")
+
+    raw_usage = envelope.get("modelUsage")
+    usage_by_model: dict[str, Any] = {}
+    if not isinstance(raw_usage, dict):
+        issues.append("model usage is missing or invalid")
+    else:
+        for raw_model, usage in raw_usage.items():
+            model = safe_model_id(raw_model)
+            if model is None:
+                issues.append("model usage contains an invalid model identifier")
+                continue
+            usage_by_model[model] = usage
+
+    observed_models = initialized_models | assistant_models | set(usage_by_model)
+    primary_family_models = sorted(
+        model
+        for model in observed_models
+        if model_matches_family(model, requested_family)
+    )
+    auxiliary_models = sorted(
+        model
+        for model in observed_models
+        if not model_matches_family(model, requested_family)
+    )
+    if primary_model and not any(
+        model_matches_family(model, requested_family) for model in usage_by_model
+    ):
+        issues.append("requested model family is absent from model usage")
+    if auxiliary_models:
+        issues.append("auxiliary model usage is not permitted")
+
+    normalized_usage: list[dict[str, Any]] = []
+    for model in sorted(usage_by_model):
+        usage = usage_by_model[model]
+        if not isinstance(usage, dict):
+            issues.append("per-model usage is invalid")
+            continue
+        input_tokens = usage.get("inputTokens")
+        output_tokens = usage.get("outputTokens")
+        cost_usd = usage.get("costUSD")
+        if not valid_nonnegative_integer(input_tokens):
+            issues.append("per-model input token usage is invalid")
+        if not valid_nonnegative_integer(output_tokens):
+            issues.append("per-model output token usage is invalid")
+        if not valid_nonnegative_number(cost_usd):
+            issues.append("per-model cost usage is invalid")
+        normalized_usage.append(
+            {
+                "model": model,
+                "role": "primary"
+                if model_matches_family(model, requested_family)
+                else "auxiliary",
+                "input_tokens": input_tokens
+                if valid_nonnegative_integer(input_tokens)
+                else None,
+                "output_tokens": output_tokens
+                if valid_nonnegative_integer(output_tokens)
+                else None,
+                "cache_read_input_tokens": usage.get("cacheReadInputTokens")
+                if valid_nonnegative_integer(usage.get("cacheReadInputTokens"))
+                else 0,
+                "cache_creation_input_tokens": usage.get("cacheCreationInputTokens")
+                if valid_nonnegative_integer(usage.get("cacheCreationInputTokens"))
+                else 0,
+                "cost_usd": cost_usd if valid_nonnegative_number(cost_usd) else None,
+            }
+        )
+
+    telemetry = {
+        "initialized_model_observed": initialized_model,
+        "assistant_models_observed": sorted(assistant_models),
+        "primary_model_observed": primary_model,
+        "primary_family_models_observed": primary_family_models,
+        "auxiliary_models_observed": auxiliary_models,
+        "models_observed": sorted(observed_models),
+        "resolved_models": sorted(observed_models),
+        "model_usage": normalized_usage,
+        "model_policy_verified": not issues,
+    }
+    return telemetry, list(dict.fromkeys(issues))
+
+
+def summarize_failed_stream(raw: bytes, *, exit_code: int) -> dict[str, Any]:
+    text = raw.decode("utf-8", errors="replace")
+    events: list[dict[str, Any]] = []
+    malformed_lines = 0
+    event_types: dict[str, int] = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            malformed_lines += 1
+            continue
+        if not isinstance(event, dict):
+            malformed_lines += 1
+            continue
+        events.append(event)
+        event_type = event.get("type")
+        if not (
+            isinstance(event_type, str)
+            and re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", event_type)
+        ):
+            event_type = "unknown"
+        event_types[event_type] = event_types.get(event_type, 0) + 1
+
+    terminal = next(
+        (event for event in reversed(events) if event.get("type") == "result"), None
+    )
+    safe_terminal: dict[str, Any] = {}
+    terminal_redactions = 0
+    if terminal is not None:
+        for key in (
+            "subtype",
+            "is_error",
+            "api_error_status",
+            "terminal_reason",
+            "stop_reason",
+            "session_id",
+        ):
+            value = terminal.get(key)
+            if isinstance(value, str) and len(value) <= 256:
+                value, redactions = redact(value)
+                terminal_redactions += redactions
+                safe_terminal[key] = value
+            elif isinstance(value, (bool, int)) or (
+                isinstance(value, float) and math.isfinite(value)
+            ):
+                safe_terminal[key] = value
+
+    observed_models: set[str] = set()
+    for event in events:
+        candidates: list[Any] = []
+        if event.get("type") == "system":
+            candidates.append(event.get("model"))
+        if event.get("type") == "assistant" and isinstance(event.get("message"), dict):
+            candidates.append(event["message"].get("model"))
+        if event.get("type") == "result" and isinstance(event.get("modelUsage"), dict):
+            candidates.extend(event["modelUsage"].keys())
+        observed_models.update(
+            model for candidate in candidates if (model := safe_model_id(candidate))
+        )
+
+    error_message = terminal.get("result") if terminal else None
+    sanitized_error, error_redactions = redact(
+        error_message if isinstance(error_message, str) else ""
+    )
+    sanitized_error = sanitized_error[:4096]
+    return {
+        "exit_code": exit_code,
+        "stdout_bytes": len(raw),
+        "event_count": len(events),
+        "malformed_event_lines": malformed_lines,
+        "event_types": dict(sorted(event_types.items())),
+        "terminal": safe_terminal,
+        "terminal_redactions": terminal_redactions,
+        "models_observed": sorted(observed_models),
+        "error": sanitized_error,
+        "error_redactions": error_redactions,
+    }
 
 
 def render_list(items: list[str]) -> list[str]:
@@ -1148,8 +1487,10 @@ def execute_claude(
             "highest_behavior_tested": doctor_result["claude"][
                 "highest_behavior_tested"
             ],
+            "quality_profile": limits["quality_profile"],
             "model_requested": limits["model"],
             "effort": limits["effort"],
+            "standard_quality_acknowledged": limits["standard_quality_acknowledged"],
         },
         "resource_limits": {
             "timeout_seconds": limits["timeout"],
@@ -1194,8 +1535,11 @@ def execute_claude(
         "",
         "--no-chrome",
         "--no-session-persistence",
+        "--name",
+        f"amanerp-second-opinion-{kind}",
         "--output-format",
-        "json",
+        "stream-json",
+        "--verbose",
         "--json-schema",
         compact_json(schema),
         "--max-turns",
@@ -1263,28 +1607,20 @@ def execute_claude(
         receipt["stderr_redactions"] = redactions
         receipt["claude_exit_code"] = claude_exit_code
         if claude_exit_code != 0:
+            failure_path = run_dir / "claude-failure.json"
+            failure_summary = summarize_failed_stream(
+                claude_stdout, exit_code=claude_exit_code
+            )
+            atomic_write_json(failure_path, failure_summary)
+            receipt["artifacts"]["claude_failure"] = str(failure_path)
+            receipt["claude"]["models_observed"] = failure_summary["models_observed"]
             raise AdvisorError(
                 EXIT_CLAUDE,
                 "Claude analysis failed",
                 outcome="claude_failed",
                 stderr_text=sanitized_stderr,
             )
-        try:
-            claude_stdout_text = claude_stdout.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise AdvisorError(
-                EXIT_INVALID_RESULT,
-                "Claude response is not valid UTF-8",
-                outcome="invalid_result",
-            ) from exc
-        try:
-            envelope = json.loads(claude_stdout_text)
-        except json.JSONDecodeError as exc:
-            raise AdvisorError(
-                EXIT_INVALID_RESULT,
-                "Claude response is not valid JSON",
-                outcome="invalid_result",
-            ) from exc
+        events, envelope = parse_claude_stream(claude_stdout)
 
         response_path = run_dir / "claude-response.json"
         atomic_write_json(response_path, envelope)
@@ -1301,6 +1637,9 @@ def execute_claude(
             and math.isfinite(reported_cost)
             and reported_cost >= 0
         )
+        model_telemetry, model_issues = collect_model_telemetry(
+            events, envelope, requested_family=limits["model"]
+        )
         receipt["claude"].update(
             {
                 "session_id": envelope.get("session_id"),
@@ -1310,12 +1649,17 @@ def execute_claude(
                 "reported_cost_usd": reported_cost,
                 "turn_enforcement_observed": turns_observed,
                 "budget_enforcement_observed": cost_observed,
-                "resolved_models": sorted(envelope.get("modelUsage", {}).keys())
-                if isinstance(envelope.get("modelUsage"), dict)
-                else [],
+                **model_telemetry,
             }
         )
         receipt["artifacts"]["claude_response"] = str(response_path)
+        if model_issues:
+            receipt["claude"]["model_policy_violations"] = model_issues
+            raise AdvisorError(
+                EXIT_CLAUDE,
+                "Claude model usage violated the selected quality profile",
+                outcome="model_policy_violation",
+            )
         if not turns_observed or not cost_observed:
             raise AdvisorError(
                 EXIT_CLAUDE,
@@ -1422,13 +1766,7 @@ def read_context_files(
 def run_advisory(args: argparse.Namespace) -> dict[str, Any]:
     limits = validate_common_options(
         args,
-        defaults={
-            "timeout": 900,
-            "max_turns": 6,
-            "max_budget_usd": 5.0,
-            "model": "opus",
-            "effort": "high",
-        },
+        profiles=ADVISORY_PROFILE_DEFAULTS,
     )
     question_path: str | None = None
     if args.question_file:
@@ -1540,6 +1878,78 @@ def gh_command(
         ) from exc
 
 
+def get_update_status(gh: str) -> dict[str, Any]:
+    raw = gh_command(
+        gh,
+        [
+            "api",
+            "--hostname",
+            "github.com",
+            UPDATE_ENDPOINT,
+            "--method",
+            "GET",
+            "--header",
+            "Accept: application/vnd.github+json",
+        ],
+    )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AdvisorError(
+            EXIT_GITHUB,
+            "GitHub returned malformed release metadata",
+            outcome="github_failed",
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise AdvisorError(
+            EXIT_GITHUB,
+            "GitHub returned malformed release metadata",
+            outcome="github_failed",
+        )
+    tag = payload.get("tag_name")
+    release_url = payload.get("html_url")
+    match = STABLE_RELEASE_TAG_PATTERN.fullmatch(tag) if isinstance(tag, str) else None
+    expected_url = (
+        f"https://github.com/{UPDATE_REPOSITORY}/releases/tag/{tag}" if match else None
+    )
+    if (
+        match is None
+        or release_url != expected_url
+        or payload.get("draft") is not False
+        or payload.get("prerelease") is not False
+    ):
+        raise AdvisorError(
+            EXIT_GITHUB,
+            "GitHub returned invalid or non-stable release metadata",
+            outcome="github_failed",
+        )
+
+    installed_text = PLUGIN_VERSION.split("+", 1)[0]
+    installed_match = STABLE_RELEASE_TAG_PATTERN.fullmatch(f"v{installed_text}")
+    if installed_match is None:
+        raise AdvisorError(
+            EXIT_INTERNAL,
+            "installed plugin version is not stable semantic versioning",
+            outcome="internal_error",
+        )
+    installed = tuple(int(part) for part in installed_match.groups())
+    latest = tuple(int(part) for part in match.groups())
+
+    return {
+        "checked": True,
+        "channel": "github_releases",
+        "repository": UPDATE_REPOSITORY,
+        "installed_version": installed_text,
+        "latest_version": tag.removeprefix("v"),
+        "update_available": installed < latest,
+        "ahead_of_latest": installed > latest,
+        "release_url": release_url,
+        "git_marketplace_update_command": GIT_MARKETPLACE_UPDATE_COMMAND,
+        "new_task_required": True,
+    }
+
+
 def get_pr_metadata(gh: str, repository: str, number: int) -> dict[str, Any]:
     raw = gh_command(
         gh, ["pr", "view", str(number), "--repo", repository, "--json", PR_FIELDS]
@@ -1592,23 +2002,7 @@ def capture_pr(
 
 
 def run_pr_review(args: argparse.Namespace) -> dict[str, Any]:
-    critical_defaults = {
-        "timeout": 1500,
-        "max_turns": 10,
-        "max_budget_usd": 10.0,
-        "model": "opus",
-        "effort": "high",
-    }
-    normal_defaults = {
-        "timeout": 1200,
-        "max_turns": 8,
-        "max_budget_usd": 5.0,
-        "model": "sonnet",
-        "effort": "high",
-    }
-    limits = validate_common_options(
-        args, defaults=critical_defaults if args.critical else normal_defaults
-    )
+    limits = validate_common_options(args, profiles=PR_PROFILE_DEFAULTS)
     context_payload, context_metadata, source_paths = read_context_files(
         args.context_file,
         initial_bytes=0,
@@ -1709,7 +2103,7 @@ def run_pr_review(args: argparse.Namespace) -> dict[str, Any]:
         "source": source,
         "context": context_metadata,
         "limits": limits,
-        "critical": args.critical,
+        "critical": limits["quality_profile"] == "critical",
         "sensitive_input_override": args.allow_sensitive_input,
     }
     return execute_claude(
@@ -1730,8 +2124,12 @@ def run_pr_review(args: argparse.Namespace) -> dict[str, Any]:
 def add_common_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--context-file", action="append", default=[], metavar="PATH")
     parser.add_argument("--output-dir", metavar="PATH")
-    parser.add_argument("--model")
-    parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh", "max"))
+    quality = parser.add_mutually_exclusive_group()
+    quality.add_argument("--quality", choices=QUALITY_PROFILES)
+    quality.add_argument(
+        "--critical", dest="quality", action="store_const", const="critical"
+    )
+    parser.add_argument("--acknowledge-standard-quality", action="store_true")
     parser.add_argument("--max-turns", type=int)
     parser.add_argument("--max-budget-usd", type=float)
     parser.add_argument("--timeout", type=int)
@@ -1739,7 +2137,7 @@ def add_common_analysis_options(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> SafeArgumentParser:
-    parser = SafeArgumentParser(prog="claude-advisor", description=__doc__)
+    parser = SafeArgumentParser(prog="amanerp-second-opinion", description=__doc__)
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {PLUGIN_VERSION}"
     )
@@ -1751,6 +2149,11 @@ def build_parser() -> SafeArgumentParser:
         "doctor", help="Verify local prerequisites without exposing credentials"
     )
     doctor_parser.add_argument("--require-gh", action="store_true")
+    doctor_parser.add_argument(
+        "--check-update",
+        action="store_true",
+        help="explicitly check the latest stable GitHub release without installing it",
+    )
 
     advisory = subparsers.add_parser(
         "advisory", help="Ask Claude for a bounded independent advisory"
@@ -1768,7 +2171,6 @@ def build_parser() -> SafeArgumentParser:
     source_group.add_argument("--diff-file", metavar="PATH")
     pr_review.add_argument("--repo", metavar="OWNER/REPO")
     pr_review.add_argument("--source-label")
-    pr_review.add_argument("--critical", action="store_true")
     add_common_analysis_options(pr_review)
     return parser
 
@@ -1777,7 +2179,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = build_parser().parse_args(argv)
         if args.command == "doctor":
-            emit(doctor(require_gh=args.require_gh))
+            emit(
+                doctor(
+                    require_gh=args.require_gh or args.check_update,
+                    check_update=args.check_update,
+                )
+            )
             return 0
         if args.command == "advisory":
             emit(run_advisory(args))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a deterministic, uncompressed Claude Advisor plugin archive."""
+"""Create a deterministic, uncompressed Second Opinion plugin archive."""
 
 from __future__ import annotations
 
@@ -14,14 +14,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugins" / "claude-advisor"
+PLUGIN = ROOT / "plugins" / "amanerp-second-opinion"
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 EXCLUDED_NAMES = {".DS_Store", "__pycache__"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
+PACKAGE_DOCUMENTS = (ROOT / "LICENSE", ROOT / "NOTICE")
 
 
-def included_files() -> list[Path]:
-    files: list[Path] = []
+def included_files() -> list[tuple[str, Path]]:
+    files: list[tuple[str, Path]] = []
     for path in PLUGIN.rglob("*"):
         relative = path.relative_to(PLUGIN)
         if any(part in EXCLUDED_NAMES for part in relative.parts):
@@ -32,8 +33,13 @@ def included_files() -> list[Path]:
         if stat.S_ISLNK(info.st_mode):
             raise SystemExit(f"refusing to package symlink: {relative}")
         if stat.S_ISREG(info.st_mode):
-            files.append(path)
-    return sorted(files, key=lambda item: item.relative_to(PLUGIN).as_posix())
+            files.append((relative.as_posix(), path))
+    for path in PACKAGE_DOCUMENTS:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise SystemExit(f"required package document is not a regular file: {path}")
+        files.append((path.name, path))
+    return sorted(files, key=lambda item: item[0])
 
 
 def version() -> str:
@@ -56,9 +62,8 @@ def write_archive(destination: Path) -> str:
         with zipfile.ZipFile(
             temporary, "w", compression=zipfile.ZIP_STORED, strict_timestamps=True
         ) as archive:
-            for path in included_files():
-                relative = path.relative_to(PLUGIN).as_posix()
-                name = f"claude-advisor/{relative}"
+            for relative, path in included_files():
+                name = f"amanerp-second-opinion/{relative}"
                 info = zipfile.ZipInfo(name, FIXED_TIME)
                 info.create_system = 3
                 executable = os.access(path, os.X_OK)
@@ -82,7 +87,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
     args = parser.parse_args()
-    archive = args.output_dir / f"claude-advisor-{version()}.zip"
+    archive = args.output_dir / f"amanerp-second-opinion-{version()}.zip"
     digest = write_archive(archive)
     print(json.dumps({"archive": str(archive), "sha256": digest}, sort_keys=True))
     return 0

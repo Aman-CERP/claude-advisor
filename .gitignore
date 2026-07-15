@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .DS_Store
 .codex/claude-advisor/
+.codex/amanerp-second-opinion/
 dist/
 .coverage
 .pytest_cache/

@@ -1,4 +1,96 @@
-# Claude Advisor v0.1.0 — Implementation Plan
+# Second Opinion by AmanERP v0.2.0 — Publication Hardening Plan
+
+Status: Implemented; human-controlled publication gates remain
+Date: 2026-07-14
+Last amended: 2026-07-15
+Owner: AmanERP maintainers
+
+## V0.2 execution sequence
+
+This release preserves the v0.1 runtime trust boundary while replacing the public identity and completing the OpenAI Plugin Directory submission packet.
+
+### Phase A — contract and migration tests
+
+1. Amend `docs/specification.md` with the publisher, trademark, legal, surface, and submission contracts.
+2. Update project, packaging, and runner tests to require the `amanerp-second-opinion` package, `independent-*` skills, AmanERP marketplace identity, public legal URLs, assets, and five-positive/three-negative submission packet.
+3. Run the changed tests before production edits and retain their expected failure as the red phase.
+
+### Phase B — neutral product identity
+
+1. Rename the plugin folder to `plugins/amanerp-second-opinion`.
+2. Rename the runner to `scripts/second_opinion.py` while preserving command and exit-code behavior.
+3. Rename the two skills to `independent-advisory` and `independent-pr-review` and regenerate their `agents/openai.yaml` metadata.
+4. Rename the marketplace to `amanerp`, set the publisher to AmanERP, and update active documentation and packaging paths.
+5. Preserve v0.1 changelog and review records as explicitly historical provenance.
+
+### Phase C — publication materials
+
+1. Add AmanERP-owned icon, logo, and representative PNG screenshots to the plugin assets.
+2. Complete the rich manifest with product, support, privacy, terms, brand color, asset paths, capabilities, and starter prompts.
+3. Add `submission/listing.json`, `test-cases.json`, reviewer guide, release notes, policy attestations, and final checklist.
+4. Add deterministic repository validation for submission counts, fields, public URLs, asset existence, retired active identifiers, and archive isolation.
+
+### Phase D — AmanERP public pages
+
+1. Add the English-first `/developer-tools/second-opinion` product page using the existing AmanERP design system and a truthful local data-flow visual.
+2. Add dedicated support, privacy, and terms pages under the same path.
+3. Keep untranslated French surfaces unavailable and legal pages noindex; do not fabricate jurisdiction-specific claims.
+4. Run link, locale, lint, build, and visual checks.
+
+### Phase E — verification and publication PRs
+
+1. Run `make check`, `make package`, `make package-repro-check`, official plugin validation, and both skill validators.
+2. Install the renamed marketplace/plugin locally using the documented cache-safe flow and run doctor plus a synthetic supplied-diff smoke.
+3. Open focused PRs in the plugin and website repositories.
+4. Dogfood `independent-pr-review` against the plugin PR, disposition every high/medium finding, and rerun after material changes.
+5. Leave OpenAI business verification, portal attestations, final submit, website deploy, and Anthropic trademark permission as named human-controlled publication gates.
+
+### Phase F — model-governance hardening
+
+1. Replace caller-controlled model/effort values with `standard`, `deep`, and `critical` quality profiles. Default both skills to Opus/high `deep`; use Opus/xhigh for `critical`; require explicit acknowledgment and skill-level user authorization for Sonnet/high `standard`.
+2. Add failing tests for profile selection, arbitrary override rejection, deterministic session naming, verbose stream parsing, answering-model verification, auxiliary-model rejection, no fallback, and redacted non-zero-exit evidence.
+3. Pass a deterministic non-sensitive `--name`, request verbose `stream-json`, parse initialized and assistant model identities, and publish a result only when all observed inference usage matches the selected family.
+4. Bump the receipt schema, preserve `resolved_models` only as a deprecated compatibility alias, and add explicit requested/primary-family/auxiliary/observed model fields plus normalized role/token/cost usage. Treat identifier variants in the requested family as primary while rejecting every different-family auxiliary.
+5. Update both skills, direct-run documentation, submission materials, changelog, and validators to disclose the enforced profile policy and prohibit silent downgrade after failure.
+6. Re-run all local gates, package reproducibility, official validators, cache-safe local reinstall, a synthetic live smoke on the highest-tested Claude CLI, and an Opus critical dogfood review of the final PR diff.
+
+### Phase G — update lifecycle hardening
+
+1. Add an explicit-only `doctor --check-update` contract. Use the existing
+   authenticated, read-only GitHub CLI boundary; query a fixed repository and
+   stable-release endpoint; validate canonical SemVer and release URL fields; and
+   report comparison state without changing installed plugin state.
+2. Add failing runner tests for no implicit update request, update available,
+   current, locally ahead, malformed metadata, API failure, and GitHub
+   authentication failure before implementing the option.
+3. Add a dependency-free, loopback-only marketplace integration smoke using an
+   isolated `CODEX_HOME`. Prove that `codex plugin marketplace upgrade amanerp`
+   refreshes a Git source and replaces the cached installed version without
+   modifying the maintainer's actual Codex configuration.
+4. Add a release-contract validator for tag/version/changelog/release-notes
+   agreement and wire it into the tag workflow before packaging and publication.
+5. Publish an update policy covering Git-marketplace refreshes, local development
+   reinstalls, OpenAI Plugin Directory update review, notifications, rollback,
+   immutable releases, and the fresh-task requirement.
+6. Re-run repository, package, official validator, isolated marketplace, local
+   installation, and opt-in live update checks. Dogfood the installed Opus
+   critical PR-review skill against the immutable PR head, reconcile every
+   critical/high/medium finding, and rerun after material fixes.
+
+## V0.2 rollback
+
+- GitHub redirects the former repository URL after the neutral repository rename.
+- The retired marketplace/plugin remains removable by its former identifiers; it is not silently overwritten.
+- Existing `.codex/claude-advisor/` artifacts remain untouched and are not migrated automatically.
+- Reverting this release restores the v0.1 package without changing Claude or GitHub credentials.
+- A Git-marketplace rollback pins the marketplace to an immutable release tag,
+  reinstalls that cached version, and starts a fresh task. Returning to the
+  default branch restores normal future marketplace upgrades.
+- Directory users receive rollback or superseding-release instructions through
+  the same reviewed listing-update path; published artifacts and tags are never
+  replaced.
+
+## V0.1 implementation record
 
 Status: Ready for independent review  
 Date: 2026-07-14  
@@ -269,6 +361,7 @@ Generate a review bundle from `git diff --no-index /dev/null` for the initial re
 | AC-13 | global plugin listing from multiple AmanERP checkouts |
 | AC-14 | versioned design and final diff review records |
 | AC-15 | public GitHub Actions checks |
+| AC-23 | explicit update-check tests, release-contract validator, loopback marketplace-upgrade smoke, and update policy |
 
 ## 14. Stop conditions
 

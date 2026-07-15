@@ -1,0 +1,49 @@
+{
+  "name": "amanerp-second-opinion",
+  "version": "0.2.0",
+  "description": "Safety-first independent advisory and pull-request reviews for local Codex workflows",
+  "author": {
+    "name": "AmanERP",
+    "email": "hello@amanerp.com",
+    "url": "https://amanerp.com/developer-tools/second-opinion"
+  },
+  "homepage": "https://amanerp.com/developer-tools/second-opinion",
+  "repository": "https://github.com/Aman-CERP/amanerp-second-opinion",
+  "license": "Apache-2.0",
+  "keywords": [
+    "codex",
+    "second-opinion",
+    "claude-code",
+    "advisory",
+    "code-review",
+    "pull-request"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Second Opinion by AmanERP",
+    "shortDescription": "Independent advice and read-only PR reviews.",
+    "longDescription": "Obtain a bounded second opinion or evidence-oriented pull-request review through your separately installed Claude Code CLI, with enforced Opus quality profiles, verified answering-model telemetry, no model tools, strict ceilings, and durable local provenance receipts. AmanERP is not affiliated with or endorsed by Anthropic.",
+    "developerName": "AmanERP",
+    "category": "Productivity",
+    "capabilities": [
+      "Advisory",
+      "Code review",
+      "Read-only"
+    ],
+    "websiteURL": "https://amanerp.com/developer-tools/second-opinion",
+    "privacyPolicyURL": "https://amanerp.com/developer-tools/second-opinion/privacy",
+    "termsOfServiceURL": "https://amanerp.com/developer-tools/second-opinion/terms",
+    "defaultPrompt": [
+      "Use $independent-advisory to obtain a second opinion on this decision.",
+      "Use $independent-pr-review to adversarially review this pull request.",
+      "Use $independent-pr-review to review this supplied diff without changing files."
+    ],
+    "brandColor": "#0A7D5F",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "screenshots": [
+      "./assets/advisory-workflow.png",
+      "./assets/pr-review-workflow.png"
+    ]
+  }
+}

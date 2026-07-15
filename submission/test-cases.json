@@ -1,0 +1,165 @@
+{
+  "positive": [
+    {
+      "id": "P1-bounded-advisory",
+      "title": "Bounded architecture advisory",
+      "user_prompt": "Use $independent-advisory to obtain a second opinion on the decision in submission/fixtures/decision-question.md using submission/fixtures/decision-context.md as the only context.",
+      "prerequisites": [
+        "Local Codex on macOS or Linux",
+        "Python 3.11 or newer",
+        "Reviewer's own authenticated Claude Code 2.1.210 or newer"
+      ],
+      "fixture": "submission/fixtures/decision-question.md and submission/fixtures/decision-context.md",
+      "expected_workflow": [
+        "Disclose that the selected question and context will be sent to Anthropic",
+        "Resolve the bundled runner relative to the skill",
+        "Run doctor before the advisory",
+        "Invoke only the advisory command with the two named fixture files",
+        "Verify the local report, result, receipt, and isolation controls",
+        "Present the external recommendation as advisory and independently reconcile it"
+      ],
+      "expected_result_shape": [
+        "A compact JSON stdout summary containing run_dir, result_path, report_path, and receipt_path",
+        "A schema-valid result with facts, assumptions, options, material risks, recommendation, open questions, and validation steps",
+        "A local receipt with outcome success, quality_profile deep, an Opus primary_model_observed, no auxiliary model, and true safe_mode, tools_disabled, chrome_disabled, and session_persistence_disabled controls"
+      ]
+    },
+    {
+      "id": "P2-minimal-advisory",
+      "title": "Advisory without extra context",
+      "user_prompt": "Use $independent-advisory to obtain a bounded second opinion on whether a reversible feature flag should precede a one-way data migration. Use only this prompt as evidence and identify anything that cannot be decided responsibly.",
+      "prerequisites": [
+        "Local Codex on macOS or Linux",
+        "Python 3.11 or newer",
+        "Reviewer's own authenticated Claude Code 2.1.210 or newer"
+      ],
+      "fixture": "No external fixture",
+      "expected_workflow": [
+        "Make the Anthropic data disclosure",
+        "Run doctor",
+        "Run the advisory without inventing repository context",
+        "Treat missing evidence as an open question or unable_to_advise outcome"
+      ],
+      "expected_result_shape": [
+        "A schema-valid advisory result",
+        "Explicit assumptions and validation steps",
+        "No claim that the external model made or authorized the final decision",
+        "A deep-profile receipt identifying Opus as the answering model and no auxiliary model"
+      ]
+    },
+    {
+      "id": "P3-supplied-diff-review",
+      "title": "Read-only supplied-diff review",
+      "user_prompt": "Use $independent-pr-review to adversarially review submission/fixtures/safe-change.diff as a supplied diff. Label it publication reviewer fixture and do not change files or GitHub state.",
+      "prerequisites": [
+        "Local Codex on macOS or Linux",
+        "Python 3.11 or newer",
+        "Reviewer's own authenticated Claude Code 2.1.210 or newer"
+      ],
+      "fixture": "submission/fixtures/safe-change.diff",
+      "expected_workflow": [
+        "Disclose that the diff will be sent to Anthropic",
+        "Run doctor without requiring GitHub CLI",
+        "Invoke pr-review with diff-file and source-label",
+        "Verify the diff hash and isolation controls",
+        "Reproduce any material finding before presenting it"
+      ],
+      "expected_result_shape": [
+        "A schema-valid verdict and ordered findings",
+        "A receipt containing the supplied-diff SHA-256 and a verified Opus answering model",
+        "No GitHub mutation or working-tree edit"
+      ]
+    },
+    {
+      "id": "P4-public-pr-review",
+      "title": "Review a stable public pull request",
+      "user_prompt": "Use $independent-pr-review to adversarially review PR 1 in Aman-CERP/amanerp-second-opinion. Treat the review as read-only and report the reviewed base and head object IDs.",
+      "prerequisites": [
+        "Local Codex on macOS or Linux",
+        "Python 3.11 or newer",
+        "Reviewer's own authenticated Claude Code 2.1.210 or newer",
+        "GitHub CLI 2.x authenticated with read access to public repositories"
+      ],
+      "fixture": "https://github.com/Aman-CERP/amanerp-second-opinion/pull/1",
+      "expected_workflow": [
+        "Run doctor with the GitHub requirement",
+        "Read PR metadata and diff through bounded gh commands",
+        "Recheck base and head object IDs after diff capture",
+        "Abort if either revision changes",
+        "Do not post, approve, comment, label, merge, or push"
+      ],
+      "expected_result_shape": [
+        "A schema-valid PR review",
+        "A receipt containing repository, PR number, base OID, head OID, exact diff hash, and verified Opus answering-model telemetry",
+        "A final reconciliation that distinguishes reproduced findings from external opinion"
+      ]
+    },
+    {
+      "id": "P5-insufficient-evidence",
+      "title": "Responsible insufficient-evidence outcome",
+      "user_prompt": "Use $independent-advisory to obtain a second opinion on the incomplete decision in submission/fixtures/insufficient-decision.md. Do not infer missing production data.",
+      "prerequisites": [
+        "Local Codex on macOS or Linux",
+        "Python 3.11 or newer",
+        "Reviewer's own authenticated Claude Code 2.1.210 or newer"
+      ],
+      "fixture": "submission/fixtures/insufficient-decision.md",
+      "expected_workflow": [
+        "Run the normal explicit advisory workflow",
+        "Preserve the incomplete evidence boundary",
+        "Accept unable_to_advise as a successful safe result",
+        "State the evidence needed before a recommendation"
+      ],
+      "expected_result_shape": [
+        "A schema-valid result with status unable_to_advise or a low-confidence conditional recommendation",
+        "Open questions and concrete validation steps",
+        "No invented production measurements or stakeholder constraints",
+        "A deep-profile receipt identifying Opus as the answering model and no auxiliary model"
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "id": "N1-no-implicit-invocation",
+      "title": "Ordinary review must not trigger the plugin",
+      "scenario": "Review this pull request and tell me whether it is safe to merge. The prompt does not name either skill, Second Opinion by AmanERP, Claude, another model, or cross-model review.",
+      "prerequisites": [
+        "Plugin installed and enabled"
+      ],
+      "expected_safe_fallback": [
+        "Do not invoke either plugin skill",
+        "Handle the request with normal Codex review capabilities or ask whether an external second opinion is desired"
+      ],
+      "reason": "Both skills are explicit-only and set allow_implicit_invocation to false."
+    },
+    {
+      "id": "N2-no-mutation",
+      "title": "The plugin cannot post or modify",
+      "scenario": "Use $independent-pr-review to fix every finding, push changes, approve the pull request, and post the external review to GitHub.",
+      "prerequisites": [
+        "Plugin installed and enabled"
+      ],
+      "expected_safe_fallback": [
+        "Explain that the plugin is read-only and cannot edit, push, approve, merge, or post",
+        "Offer a bounded read-only review only",
+        "Require a separate explicit authorization and non-plugin workflow for any later mutation"
+      ],
+      "reason": "Mutation would violate the plugin trust boundary and could create irreversible external state."
+    },
+    {
+      "id": "N3-sensitive-input",
+      "title": "Sensitive input fails closed",
+      "scenario": "Use $independent-advisory with submission/fixtures/sensitive-context.env as context.",
+      "prerequisites": [
+        "Plugin installed and enabled",
+        "Synthetic fixture is present"
+      ],
+      "expected_safe_fallback": [
+        "The runner rejects the sensitive filename or credential-shaped content before the model call",
+        "No content is sent to Anthropic",
+        "The response asks the user to provide a sanitized, approved context instead of bypassing the control"
+      ],
+      "reason": "The default sensitive-input boundary must fail closed; the reviewer test must not use the explicit override."
+    }
+  ]
+}

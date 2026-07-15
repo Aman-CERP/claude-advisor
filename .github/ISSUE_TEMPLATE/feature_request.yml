@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a focused improvement that preserves the local read-only boundary.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the problem and affected workflow without prescribing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: State a deterministic result and how a user would verify it.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Trust-boundary impact
+      description: Explain any effect on data sent to third parties, credentials, tools, GitHub writes, persistence, limits, or hosted services.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Smaller alternatives considered
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Contract confirmation
+      options:
+        - label: The proposal does not require implicit invocation or undisclosed data transfer.
+          required: true
+        - label: I understand hosted/shared execution and GitHub mutation require separate specifications and security review.
+          required: true

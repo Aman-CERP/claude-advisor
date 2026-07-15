@@ -16,6 +16,11 @@ VALIDATOR = ROOT / "scripts" / "validate_project.py"
 
 
 class PackagingTests(unittest.TestCase):
+    def test_gitignore_preserves_current_and_legacy_run_artifacts(self) -> None:
+        ignored_paths = set((ROOT / ".gitignore").read_text().splitlines())
+        self.assertIn(".codex/claude-advisor/", ignored_paths)
+        self.assertIn(".codex/amanerp-second-opinion/", ignored_paths)
+
     def test_package_is_deterministic_and_contains_only_plugin_files(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             output = Path(raw)
@@ -35,8 +40,10 @@ class PackagingTests(unittest.TestCase):
             with zipfile.ZipFile(archive) as packaged:
                 names = packaged.namelist()
                 self.assertEqual(names, sorted(names))
-                self.assertIn("claude-advisor/.codex-plugin/plugin.json", names)
-                self.assertIn("claude-advisor/scripts/claude_advisor.py", names)
+                self.assertIn("amanerp-second-opinion/.codex-plugin/plugin.json", names)
+                self.assertIn("amanerp-second-opinion/scripts/second_opinion.py", names)
+                self.assertIn("amanerp-second-opinion/LICENSE", names)
+                self.assertIn("amanerp-second-opinion/NOTICE", names)
                 self.assertFalse(
                     any("tests/" in name or "__pycache__" in name for name in names)
                 )

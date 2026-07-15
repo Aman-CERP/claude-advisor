@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <rect width="1600" height="1000" fill="#FAF8F4"/>
+  <rect x="68" y="54" width="1464" height="892" rx="28" fill="#FFFFFF" stroke="#E7E1D6" stroke-width="2"/>
+  <text x="124" y="128" fill="#0A7D5F" font-family="Manrope,Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="3">AMANERP · OPEN SOURCE</text>
+  <text x="124" y="205" fill="#181A1F" font-family="Georgia,serif" font-size="60" font-weight="700">A second opinion, with boundaries.</text>
+  <text x="124" y="254" fill="#5A6472" font-family="Manrope,Arial,sans-serif" font-size="25">Explicit input. Local execution. Structured advice. The decision remains yours.</text>
+
+  <rect x="124" y="326" width="395" height="262" rx="18" fill="#F1EDE3" stroke="#DDD5C7" stroke-width="2"/>
+  <text x="158" y="374" fill="#866518" font-family="Manrope,Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">01 · SELECT</text>
+  <text x="158" y="426" fill="#181A1F" font-family="Manrope,Arial,sans-serif" font-size="27" font-weight="700">Question + approved context</text>
+  <text x="158" y="474" fill="#5A6472" font-family="Manrope,Arial,sans-serif" font-size="21">Only the files you name are bundled.</text>
+  <text x="158" y="511" fill="#5A6472" font-family="Manrope,Arial,sans-serif" font-size="21">Sensitive paths fail closed.</text>
+  <rect x="158" y="542" width="191" height="28" rx="14" fill="#DCEFE5"/>
+  <text x="177" y="562" fill="#086348" font-family="Manrope,Arial,sans-serif" font-size="15" font-weight="700">DISCLOSED BEFORE SEND</text>
+
+  <path d="M541 457 H586" stroke="#C9A962" stroke-width="4"/>
+  <path d="M576 445 L590 457 L576 469" fill="none" stroke="#C9A962" stroke-width="4"/>
+
+  <rect x="608" y="326" width="395" height="262" rx="18" fill="#0D1117"/>
+  <text x="642" y="374" fill="#C9A962" font-family="Manrope,Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">02 · RUN LOCALLY</text>
+  <text x="642" y="426" fill="#FAF8F5" font-family="Manrope,Arial,sans-serif" font-size="27" font-weight="700">Your Claude Code session</text>
+  <text x="642" y="474" fill="#A8B3C3" font-family="Manrope,Arial,sans-serif" font-size="21">No model tools · No Chrome</text>
+  <text x="642" y="511" fill="#A8B3C3" font-family="Manrope,Arial,sans-serif" font-size="21">No session persistence · Hard ceilings</text>
+  <rect x="642" y="542" width="171" height="28" rx="14" fill="#064E3B"/>
+  <text x="661" y="562" fill="#C4F3E3" font-family="Manrope,Arial,sans-serif" font-size="15" font-weight="700">AMANERP SEES NOTHING</text>
+
+  <path d="M1025 457 H1070" stroke="#C9A962" stroke-width="4"/>
+  <path d="M1060 445 L1074 457 L1060 469" fill="none" stroke="#C9A962" stroke-width="4"/>
+
+  <rect x="1092" y="326" width="384" height="262" rx="18" fill="#FFFFFF" stroke="#0A7D5F" stroke-width="3"/>
+  <text x="1126" y="374" fill="#0A7D5F" font-family="Manrope,Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">03 · RECONCILE</text>
+  <text x="1126" y="426" fill="#181A1F" font-family="Manrope,Arial,sans-serif" font-size="27" font-weight="700">Advice + provenance</text>
+  <text x="1126" y="474" fill="#5A6472" font-family="Manrope,Arial,sans-serif" font-size="21">Facts, assumptions, risks, options,</text>
+  <text x="1126" y="511" fill="#5A6472" font-family="Manrope,Arial,sans-serif" font-size="21">validation steps, and a local receipt.</text>
+  <rect x="1126" y="542" width="182" height="28" rx="14" fill="#DCEFE5"/>
+  <text x="1145" y="562" fill="#086348" font-family="Manrope,Arial,sans-serif" font-size="15" font-weight="700">ADVISORY, NOT AUTHORITY</text>
+
+  <line x1="124" y1="660" x2="1476" y2="660" stroke="#E7E1D6" stroke-width="2"/>
+  <text x="124" y="718" fill="#181A1F" font-family="Manrope,Arial,sans-serif" font-size="22" font-weight="700">$independent-advisory</text>
+  <text x="124" y="760" fill="#5A6472" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="20">Use $independent-advisory to obtain a second opinion on this decision.</text>
+  <rect x="124" y="810" width="1352" height="82" rx="14" fill="#F1EDE3"/>
+  <circle cx="164" cy="851" r="14" fill="#0A7D5F"/>
+  <path d="M157 851 L162 856 L172 844" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="194" y="858" fill="#181A1F" font-family="Manrope,Arial,sans-serif" font-size="21">Structured JSON validated locally · Owner-only files · Stable failure codes</text>
+</svg>
