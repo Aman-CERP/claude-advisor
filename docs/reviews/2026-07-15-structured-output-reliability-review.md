@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Four PR review passes complete; focused closure advisory pending
+Status: Agreement achieved; no unresolved critical, high, medium, or low finding
 
 ## Incident
 
@@ -160,3 +160,36 @@ gate outcome. Malformed exit-zero streams receive a minimal invalid-result recor
 at the parse boundary. Regression assertions cover schema-invalid, ceiling-breach,
 and recovered-attempt model-policy outcomes, including two attempt records for the
 Opus-to-Haiku case.
+
+### Focused closure advisory
+
+The current implementation and tests were supplied directly to a final critical
+advisory focused on the every-started-attempt invariant.
+
+- Run: `20260715T075607Z-advisory-b3897a00`
+- Verdict/confidence: invariant closed / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 5 / USD 1.89472
+- Input SHA-256: `d216ef17444383ebc250204457d193f7d3bb3d58cd7ec66cf328952b9b9b91e7`
+- Result SHA-256: `42fdafc886b43b9117f2625e2f54bb27cbd214d974dd602f08ca70b19d8a5015`
+
+Claude concluded that every enumerated process, parse, model, usage, ceiling,
+extraction, schema, and success path now creates exactly one content-free attempt
+record, with no duplication or persisted pending state, and found no remaining
+critical/high/medium blocker. Codex reproduced that conclusion against the code
+and green tests.
+
+Claude noted a narrower unexpected-internal-exception window outside the original
+finding. That defense-in-depth residual is also closed: the outer exception
+boundary now fills a missing current record or finalizes it as `internal_error`.
+A fault-injection test makes model-telemetry collection raise after an attempt has
+started and proves the persisted record is finalized. Representative success and
+retry tests also assert `len(attempts) == attempts_started`.
+
+## Final agreement
+
+**AGREED — MERGE RECOMMENDED.** Across one critical design advisory, four
+immutable-head critical PR reviews, and one focused critical closure advisory,
+every finding was reproduced and fixed. No unresolved critical, high, medium, or
+low actionable finding remains. Merge still requires green CI on the final head;
+release and installation verification remain separate post-merge gates.

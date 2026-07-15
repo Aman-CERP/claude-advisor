@@ -37,7 +37,8 @@ outer Claude run; it did not guarantee successful internal schema repair.
    and preserve only bounded control/usage counts and validated model identifiers.
    Every started attempt receives an audit record, including process-level
    failures that do not return a parseable terminal and exit-zero responses later
-   rejected by a post-parse gate.
+   rejected by a post-parse gate. Unexpected internal exceptions finalize the
+   current attempt as `internal_error` before the receipt is persisted.
 
 ## Consequences
 

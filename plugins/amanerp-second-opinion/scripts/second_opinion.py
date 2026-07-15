@@ -1642,9 +1642,9 @@ def execute_claude(
             remaining_timeout = limits["timeout"] - elapsed
             if remaining_timeout <= 0:
                 if attempt_number > 1:
-                    receipt["resource_limits"][
-                        "retry_preempted_reason"
-                    ] = "aggregate_timeout"
+                    receipt["resource_limits"]["retry_preempted_reason"] = (
+                        "aggregate_timeout"
+                    )
                 raise AdvisorError(
                     EXIT_TIMEOUT,
                     "Claude analysis timed out",
@@ -1694,7 +1694,9 @@ def execute_claude(
                 process_outcome = (
                     "invalid_result"
                     if exc.reason == "limit" and exc.stream_name == "stdout"
-                    else "timeout" if exc.reason == "timeout" else "claude_failed"
+                    else "timeout"
+                    if exc.reason == "timeout"
+                    else "claude_failed"
                 )
                 receipt["claude"]["attempts"].append(
                     {
@@ -1980,6 +1982,26 @@ def execute_claude(
         exc.payload.update({"run_dir": str(run_dir), "receipt_path": str(receipt_path)})
         raise
     except Exception as exc:
+        attempts = receipt["claude"]["attempts"]
+        attempts_started = receipt["resource_limits"]["attempts_started"]
+        if attempts_started > len(attempts):
+            attempts.append(
+                {
+                    "attempt": attempts_started,
+                    "exit_code": receipt.get("claude_exit_code"),
+                    "outcome": "internal_error",
+                    "models_observed": [],
+                    "model_usage": [],
+                    "model_policy_verified": False,
+                    "model_policy_violation": False,
+                }
+            )
+        elif (
+            attempts_started > 0
+            and attempts
+            and attempts[-1].get("attempt") == attempts_started
+        ):
+            attempts[-1]["outcome"] = "internal_error"
         receipt["outcome"] = "internal_error"
         receipt["error_code"] = EXIT_INTERNAL
         receipt["error"] = "unexpected internal error"

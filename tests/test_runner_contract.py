@@ -336,6 +336,10 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(receipt["claude"]["resolved_models"], ["claude-opus-4-8"])
             self.assertEqual(receipt["claude"]["model_usage"][0]["role"], "primary")
             self.assertEqual(receipt["claude"]["model_usage"][0]["cost_usd"], 0.01)
+            self.assertEqual(
+                len(receipt["claude"]["attempts"]),
+                receipt["resource_limits"]["attempts_started"],
+            )
 
     def test_standard_quality_requires_acknowledgment_and_uses_sonnet(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -778,6 +782,10 @@ class AdvisoryTests(unittest.TestCase):
                 "structured_output_retry_exhausted",
             )
             self.assertEqual(receipt["claude"]["attempts"][1]["outcome"], "success")
+            self.assertEqual(
+                len(receipt["claude"]["attempts"]),
+                receipt["resource_limits"]["attempts_started"],
+            )
             self.assertTrue((run_dir / "claude-failure-attempt-1.json").exists())
             calls = [
                 call for call in read_jsonl(claude_log) if "--print" in call["args"]
@@ -1262,6 +1270,104 @@ class AdvisoryTests(unittest.TestCase):
             self.assertEqual(
                 receipt["resource_limits"]["retry_preempted_reason"],
                 "aggregate_timeout",
+            )
+
+    def test_unexpected_post_parse_error_finalizes_started_attempt(self) -> None:
+        spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        session_id = "00000000-0000-4000-8000-000000000001"
+        successful_stream = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": session_id,
+                    "model": "claude-opus-4-8",
+                },
+                {
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "model": "claude-opus-4-8",
+                        "content": [],
+                    },
+                },
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "session_id": session_id,
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "structured_output": ADVISORY_RESULT,
+                    "modelUsage": {
+                        "claude-opus-4-8": {
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                            "costUSD": 0.01,
+                        }
+                    },
+                },
+            )
+        ).encode()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            doctor_result = {
+                "claude": {
+                    "path": "/fake/claude",
+                    "version": "2.1.210",
+                    "highest_behavior_tested": "2.1.210",
+                },
+                "warnings": [],
+            }
+            with (
+                mock.patch.object(
+                    runner,
+                    "run_bounded_process",
+                    return_value=(0, successful_stream, b""),
+                ),
+                mock.patch.object(
+                    runner,
+                    "collect_model_telemetry",
+                    side_effect=RuntimeError("synthetic telemetry failure"),
+                ),
+            ):
+                with self.assertRaises(runner.AdvisorError) as captured:
+                    runner.execute_claude(
+                        kind="advisory",
+                        prompt_name="advisory-prompt.md",
+                        schema_name="advisory-schema.json",
+                        payload={"question": "Choose A or B", "context": []},
+                        request={"kind": "advisory"},
+                        source={"type": "advisory"},
+                        limits={
+                            "timeout": 60,
+                            "max_turns": 10,
+                            "max_budget_usd": 10.0,
+                            "model": "opus",
+                            "effort": "xhigh",
+                            "quality_profile": "critical",
+                            "standard_quality_acknowledged": False,
+                            "structured_output_attempts": 1,
+                            "retry_cost_acknowledged": False,
+                            "per_attempt_budget_usd": 10.0,
+                        },
+                        output_dir=str(root / "runs"),
+                        sensitive_override=False,
+                        sensitive_findings=[],
+                        doctor_result=doctor_result,
+                    )
+            self.assertEqual(captured.exception.code, 9)
+            run_dir = Path(captured.exception.payload["run_dir"])
+            receipt = json.loads((run_dir / "receipt.json").read_text())
+            self.assertEqual(receipt["outcome"], "internal_error")
+            self.assertEqual(receipt["resource_limits"]["attempts_started"], 1)
+            self.assertEqual(
+                receipt["claude"]["attempts"][0]["outcome"], "internal_error"
             )
 
 

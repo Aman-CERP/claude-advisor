@@ -24,6 +24,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Made `retry_triggered` mean an actually started second process; aggregate-deadline preemption now leaves it false and records `retry_preempted_reason: aggregate_timeout`.
 - Added a recovered-attempt regression proving the normal success-path model gate rejects a Haiku answering model after an Opus structured-output failure.
 - Completed the every-started-attempt invariant for exit-zero responses rejected by stream parsing, model policy, usage, ceiling, structured-output extraction, or local schema validation.
+- Added an outer internal-error finalizer so unexpected telemetry/bookkeeping or artifact-I/O exceptions cannot leave a started attempt absent or pending.
 
 ### Migration
 
