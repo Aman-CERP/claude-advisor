@@ -28,6 +28,7 @@ All notable changes are documented here. The project follows Semantic Versioning
 - Wrapped both structured-output contracts in one required `output` compatibility property, then locally validated and removed that provider-facing envelope before publishing the stable result payload.
 - Added content-free terminal structured-output error counts and categories; raw validation messages remain omitted.
 - Replaced fixed half-budget slices with a remaining-aggregate ledger so retry authorization cannot starve an otherwise-successful first attempt; retry is preempted when the verified remaining balance is below USD 0.10.
+- Preserve the last content-free structured-output failure as canonical `claude-failure.json` when aggregate timeout preempts a retry before its process starts.
 
 ### Migration
 

@@ -1670,6 +1670,7 @@ def execute_claude(
         accumulated_stderr = ""
         total_redactions = 0
         failure_paths: list[str] = []
+        last_retryable_failure_summary: dict[str, Any] | None = None
         for attempt_number in range(1, limits["structured_output_attempts"] + 1):
             elapsed = time.monotonic() - start_monotonic
             remaining_timeout = limits["timeout"] - elapsed
@@ -1678,6 +1679,10 @@ def execute_claude(
                     receipt["resource_limits"]["retry_preempted_reason"] = (
                         "aggregate_timeout"
                     )
+                    if last_retryable_failure_summary is not None:
+                        failure_path = run_dir / "claude-failure.json"
+                        atomic_write_json(failure_path, last_retryable_failure_summary)
+                        receipt["artifacts"]["claude_failure"] = str(failure_path)
                 raise AdvisorError(
                     EXIT_TIMEOUT,
                     "Claude analysis timed out",
@@ -1897,6 +1902,7 @@ def execute_claude(
                 next_attempt_budget = math.floor((next_remaining * 100) + 1e-9) / 100
                 if next_attempt_budget >= 0.10:
                     failed_reported_cost = next_failed_cost
+                    last_retryable_failure_summary = failure_summary
                     continue
                 receipt["resource_limits"]["retry_preempted_reason"] = (
                     "insufficient_remaining_budget"

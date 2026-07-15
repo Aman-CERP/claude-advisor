@@ -1428,6 +1428,16 @@ class AdvisoryTests(unittest.TestCase):
                 receipt["resource_limits"]["retry_preempted_reason"],
                 "aggregate_timeout",
             )
+            canonical_failure = run_dir / "claude-failure.json"
+            attempt_failure = run_dir / "claude-failure-attempt-1.json"
+            self.assertTrue(canonical_failure.is_file())
+            self.assertEqual(
+                json.loads(canonical_failure.read_text()),
+                json.loads(attempt_failure.read_text()),
+            )
+            self.assertEqual(
+                receipt["artifacts"]["claude_failure"], str(canonical_failure)
+            )
 
     def test_unexpected_post_parse_error_finalizes_started_attempt(self) -> None:
         spec = importlib.util.spec_from_file_location("second_opinion_runner", RUNNER)

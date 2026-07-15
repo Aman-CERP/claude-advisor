@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: Seventh review findings fixed; convergence rerun pending
+Status: Agreement achieved; no unresolved actionable finding
 
 ## Incident
 
@@ -259,9 +259,40 @@ claim that no live evidence exists is stale. The fake critical PR-review test ru
 the provider envelope end to end through the PR schema and now explicitly asserts
 that the unwrapped `result.json` equals the PR payload.
 
+### Eighth immutable-head PR review
+
+- Reviewed head: `db50d6118f1d7b71b9a6df74291f6ad6b84d58c9`
+- Diff SHA-256: `0e15fc22ccd15fcc166a81c9ad3aaf57e9025dcc5f77b3dfb822542571c8fd51`
+- Run: `20260715T084815Z-pr-review-0b9d8098`
+- Verdict/confidence: comment / medium
+- Model: `claude-opus-4-8` only; no auxiliary model
+- Turns/cost: 2 / USD 1.569909
+- Result SHA-256: `d3ca5b463f884bada3492fd1a2229f1e5a5564fcd8f854eb988c5d8fb1513132`
+- Material gate: no critical, high, or medium finding
+
+Claude found one low observability inconsistency: after attempt one exhausted
+structured output and aggregate time preempted attempt two before process start,
+only the attempt-numbered failure remained while the top-level outcome was
+`timeout`. Accepted and fixed. The runner now also writes that last bounded
+failure summary as canonical `claude-failure.json`; the top-level timeout and
+`retry_preempted_reason: aggregate_timeout` remain accurate. The regression test
+asserts both failure files are identical and the receipt points to the canonical
+artifact.
+
+The remaining verification gaps do not block agreement. This eighth run is a
+successful live structured-output canary on its reviewed head, following two
+earlier successful canaries. Codex ran the full suite and official validators;
+the reviewer was intentionally limited to the immutable unified diff. The
+provider wrapper remains a documented probabilistic mitigation that fails closed,
+not a claim that external Claude Code behavior is under AmanERP's control.
+
 ## Final agreement
 
-**PENDING CONVERGENCE RERUN.** The fifth call failed closed; the sixth and seventh
-calls successfully validated the compatibility envelope and every actionable
-finding was accepted and fixed. One final immutable-head review is required
-because the seventh pass found a medium contract contradiction.
+**AGREED — MERGE RECOMMENDED.** The fifth call failed closed and exposed the
+provider-wrapper gap. The sixth, seventh, and eighth calls successfully validated
+the compatibility envelope on progressively newer immutable heads. Every
+critical, high, medium, and low actionable finding across the design advisory,
+eight PR passes, and focused closure advisory was reproduced and fixed. The final
+low fix is localized to canonical failure-artifact promotion and has direct
+regression coverage; it does not materially alter model, schema, retry, budget,
+or isolation behavior. Merge still requires green CI on the final head.
